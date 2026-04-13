@@ -1,4 +1,7 @@
-export type PortDataType = 'ship_update' | 'stats_update' | 'director_overview_update'
+export type PortDataType =
+  | 'ship_update'
+  | 'stats_update'
+  | 'director_overview_update'
 
 export interface PortDataMessage<T = unknown> {
   type: PortDataType

@@ -44,7 +44,7 @@ npm run dev
 | 货运调度员 | `freight_dispatcher` | `FreightDisp@2026` |
 
 - **港口运营总监** 顶部导航：首页、货运、客运、资源统筹、异常响应、业务决策、业务总结（首页为数字孪生主屏）。
-- **货运调度员** 顶部导航：业务准备、客轮调度、客流疏导调度、旅客检票调度、客轮登船调度、客轮离港调度、客运服务管控、业务复盘（业务准备为数字孪生主屏）。
+- **货运调度员** 顶部导航：业务准备、船舶靠泊调度、货物装卸调度、堆场管理调度、车辆转运调度、业务异常处理、船舶离泊调度、业务复盘（**业务准备**为数字孪生主屏：Cesium + 当日货运准备 KPI 浮动面板；其余为与运营总监风格一致的调度子页，数据来自 `/api/freight/*`）。
 
 生产环境请设置环境变量 `JWT_SECRET`。登录接口返回 JWT，前端保存在 `localStorage` 中。
 
@@ -61,7 +61,8 @@ npm run dev
 | `GET /api/ships` | 船舶列表（模拟） |
 | `GET /api/alerts` | 告警列表（模拟） |
 | `GET /api/director/overview`等 | 港口运营总监子页演示数据（`/freight` `/passenger` `/resources` `/exceptions` `/decisions` `/summary`） |
-| `WS /ws` | 约每 3 秒推送 `ship_update` / `stats_update` / `director_overview_update`（总监首页 KPI） |
+| `GET /api/freight/overview` 等 | 货运调度员子页演示数据（`/berthing` `/handling` `/yard` `/vehicle` `/exceptions` `/departure` `/review`） |
+| `WS /ws` | 约每 3 秒推送 `ship_update` / `stats_update` / `director_overview_update` |
 
 开发模式下 `/api` 与 `/ws` 由 Vite 代理到后端。
 

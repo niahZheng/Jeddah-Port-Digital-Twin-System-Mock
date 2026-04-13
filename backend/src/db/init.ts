@@ -42,7 +42,20 @@ export function initDatabase() {
     );
   `)
 
+  ensureDashboardLayoutsUniqueIndex(db)
+
   seedIfEmpty(db)
+}
+
+/** 旧库可能仅有表而无 UNIQUE，UPSERT 会失败；补建唯一索引（若已存在则忽略） */
+function ensureDashboardLayoutsUniqueIndex(database: Database.Database) {
+  try {
+    database.exec(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_dashboard_layouts_user_page ON dashboard_layouts(user_id, page_key)',
+    )
+  } catch {
+    /* 极端情况下忽略（如重复数据导致无法建唯一索引） */
+  }
 }
 
 function seedIfEmpty(database: Database.Database) {

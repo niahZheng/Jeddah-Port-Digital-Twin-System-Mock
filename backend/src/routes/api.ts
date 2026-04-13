@@ -4,12 +4,14 @@ import { getShips } from '../mock/ships.js'
 import { getAlerts } from '../mock/alerts.js'
 import { authRouter } from './auth.js'
 import { directorRouter } from './director.js'
+import { freightRouter } from './freight.js'
 import { layoutRouter } from './layout.js'
 
 export const apiRouter = Router()
 
 apiRouter.use('/auth', authRouter)
 apiRouter.use('/director', directorRouter)
+apiRouter.use('/freight', freightRouter)
 apiRouter.use('/layout', layoutRouter)
 
 apiRouter.get('/health', (_req, res) => {

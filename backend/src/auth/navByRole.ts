@@ -20,13 +20,13 @@ export function navItemsForRoleKey(roleKey: string): string[] {
       ]
     case ROLE_KEYS.FREIGHT_DISPATCHER:
       return [
-        '业务准备',
-        '客轮调度',
-        '客流疏导调度',
-        '旅客检票调度',
-        '客轮登船调度',
-        '客轮离港调度',
-        '客运服务管控',
+        '首页',
+        '船舶靠泊调度',
+        '货物装卸调度',
+        '堆场管理调度',
+        '车辆转运调度',
+        '业务异常处理',
+        '船舶离泊调度',
         '业务复盘',
       ]
     default:

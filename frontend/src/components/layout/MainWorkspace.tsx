@@ -1,5 +1,7 @@
 import { DirectorOverviewWidgets } from '../director/overview/DirectorOverviewWidgets'
 import { DirectorWorkspace } from '../director/DirectorWorkspace'
+import { FreightDispatcherOverviewWidgets } from '../freight-dispatcher/overview/FreightDispatcherOverviewWidgets'
+import { FreightDispatcherWorkspace } from '../freight-dispatcher/FreightDispatcherWorkspace'
 import { CesiumViewport } from '../cesium/CesiumViewport'
 import { BottomConsole } from './BottomConsole'
 import { LeftPanel, RightPanel } from '../widgets/StatsPanel'
@@ -13,9 +15,32 @@ type Props = {
 }
 
 const PORT_DIRECTOR = 'port_director'
+const FREIGHT_DISPATCHER = 'freight_dispatcher'
 
 export function MainWorkspace(props: Props) {
   const { activeNav, twinHomeLabel, roleKey } = props
+
+  if (roleKey === FREIGHT_DISPATCHER) {
+    const isFreightHome = activeNav === twinHomeLabel
+    if (isFreightHome) {
+      return (
+        <div className="screen-body">
+          <div className="screen-main screen-main--map-only">
+            <div className="stage stage--floating-widgets">
+              <CesiumViewport />
+              <FreightDispatcherOverviewWidgets />
+            </div>
+          </div>
+          <BottomConsole />
+        </div>
+      )
+    }
+    return (
+      <div className="screen-body screen-body--director">
+        <FreightDispatcherWorkspace activeNav={activeNav} />
+      </div>
+    )
+  }
 
   if (roleKey === PORT_DIRECTOR) {
     const isDirectorHome = activeNav === twinHomeLabel

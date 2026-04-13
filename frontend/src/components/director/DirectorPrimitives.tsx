@@ -69,6 +69,7 @@ export function DirectorPageShell(props: {
   const token = useAuthStore((s) => s.token)
   const [editable, setEditable] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [layoutSaveError, setLayoutSaveError] = useState<string | null>(null)
   const [layoutState, setLayoutState] = useState<{ columns: number; items: LayoutItemState[] } | null>(
     null,
   )
@@ -147,6 +148,7 @@ export function DirectorPageShell(props: {
 
   async function onSaveLayout() {
     if (!layoutSpec || !token || !layoutState) return
+    setLayoutSaveError(null)
     setSaving(true)
     try {
       const resp = await saveDashboardLayout(token, layoutSpec.pageKey, {
@@ -168,6 +170,8 @@ export function DirectorPageShell(props: {
         }),
       )
       setEditable(false)
+    } catch (e) {
+      setLayoutSaveError(e instanceof Error ? e.message : '保存失败')
     } finally {
       setSaving(false)
     }
@@ -191,7 +195,10 @@ export function DirectorPageShell(props: {
               <button
                 type="button"
                 className="director-layout-btn"
-                onClick={() => setEditable((v) => !v)}
+                onClick={() => {
+                  setLayoutSaveError(null)
+                  setEditable((v) => !v)
+                }}
               >
                 {editable ? '结束布局调整' : '调整布局'}
               </button>
@@ -229,6 +236,11 @@ export function DirectorPageShell(props: {
                   >
                     {saving ? '保存中…' : '保存布局'}
                   </button>
+                  {layoutSaveError ? (
+                    <p className="director-layout-error" role="alert">
+                      {layoutSaveError}
+                    </p>
+                  ) : null}
                 </>
               ) : null}
             </div>

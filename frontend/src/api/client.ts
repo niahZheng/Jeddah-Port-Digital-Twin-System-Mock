@@ -8,6 +8,10 @@ import type {
   DirectorResources,
   DirectorSummary,
 } from '../types/director'
+import type {
+  FreightDispatcherJson,
+  FreightDispatcherOverview,
+} from '../types/freightDispatcher'
 import type { AlertItem, PortDataMessage, PortStats, ShipData } from '../types/port'
 import type { DashboardLayout, DashboardLayoutResponse } from '../types/layout'
 
@@ -81,6 +85,54 @@ export async function fetchDirectorSummary(): Promise<DirectorSummary> {
   return r.json() as Promise<DirectorSummary>
 }
 
+export async function fetchFreightOverview(): Promise<FreightDispatcherOverview> {
+  const r = await fetch(api('/api/freight/overview'))
+  if (!r.ok) throw new Error('freight overview')
+  return r.json() as Promise<FreightDispatcherOverview>
+}
+
+export async function fetchFreightBerthing(): Promise<FreightDispatcherJson> {
+  const r = await fetch(api('/api/freight/berthing'))
+  if (!r.ok) throw new Error('freight berthing')
+  return r.json() as Promise<FreightDispatcherJson>
+}
+
+export async function fetchFreightHandling(): Promise<FreightDispatcherJson> {
+  const r = await fetch(api('/api/freight/handling'))
+  if (!r.ok) throw new Error('freight handling')
+  return r.json() as Promise<FreightDispatcherJson>
+}
+
+export async function fetchFreightYard(): Promise<FreightDispatcherJson> {
+  const r = await fetch(api('/api/freight/yard'))
+  if (!r.ok) throw new Error('freight yard')
+  return r.json() as Promise<FreightDispatcherJson>
+}
+
+export async function fetchFreightVehicle(): Promise<FreightDispatcherJson> {
+  const r = await fetch(api('/api/freight/vehicle'))
+  if (!r.ok) throw new Error('freight vehicle')
+  return r.json() as Promise<FreightDispatcherJson>
+}
+
+export async function fetchFreightExceptions(): Promise<FreightDispatcherJson> {
+  const r = await fetch(api('/api/freight/exceptions'))
+  if (!r.ok) throw new Error('freight exceptions')
+  return r.json() as Promise<FreightDispatcherJson>
+}
+
+export async function fetchFreightDeparture(): Promise<FreightDispatcherJson> {
+  const r = await fetch(api('/api/freight/departure'))
+  if (!r.ok) throw new Error('freight departure')
+  return r.json() as Promise<FreightDispatcherJson>
+}
+
+export async function fetchFreightReview(): Promise<FreightDispatcherJson> {
+  const r = await fetch(api('/api/freight/review'))
+  if (!r.ok) throw new Error('freight review')
+  return r.json() as Promise<FreightDispatcherJson>
+}
+
 export async function fetchDashboardLayout(
   token: string,
   pageKey: string,
@@ -105,8 +157,14 @@ export async function saveDashboardLayout(
     },
     body: JSON.stringify({ layout }),
   })
-  if (!r.ok) throw new Error('layout save')
-  return (await r.json()) as DashboardLayoutResponse
+  const j = (await r.json().catch(() => ({}))) as { error?: string } & Partial<DashboardLayoutResponse>
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `保存布局失败 (${r.status})`)
+  }
+  if (!j.layout || !j.pageKey) {
+    throw new Error('保存布局响应无效')
+  }
+  return j as DashboardLayoutResponse
 }
 
 export async function fetchStats(): Promise<PortStats> {

@@ -67,14 +67,20 @@ layoutRouter.put('/:pageKey', (req, res) => {
   }
   const updatedAt = new Date().toISOString()
   const db = getDb()
-  db.prepare(
-    `
-    INSERT INTO dashboard_layouts (user_id, page_key, layout_json, updated_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(user_id, page_key)
-    DO UPDATE SET layout_json = excluded.layout_json, updated_at = excluded.updated_at
-  `,
-  ).run(userId, pageKey, JSON.stringify(layout), updatedAt)
+  const json = JSON.stringify(layout)
+  const existing = db
+    .prepare('SELECT 1 AS ok FROM dashboard_layouts WHERE user_id = ? AND page_key = ? LIMIT 1')
+    .get(userId, pageKey) as { ok: number } | undefined
+
+  if (existing) {
+    db.prepare(
+      'UPDATE dashboard_layouts SET layout_json = ?, updated_at = ? WHERE user_id = ? AND page_key = ?',
+    ).run(json, updatedAt, userId, pageKey)
+  } else {
+    db.prepare(
+      'INSERT INTO dashboard_layouts (user_id, page_key, layout_json, updated_at) VALUES (?, ?, ?, ?)',
+    ).run(userId, pageKey, json, updatedAt)
+  }
 
   res.json({ pageKey, layout, updatedAt, source: 'db' })
 })
