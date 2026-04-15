@@ -2,6 +2,10 @@ import { DirectorOverviewWidgets } from '../director/overview/DirectorOverviewWi
 import { DirectorWorkspace } from '../director/DirectorWorkspace'
 import { FreightDispatcherOverviewWidgets } from '../freight-dispatcher/overview/FreightDispatcherOverviewWidgets'
 import { FreightDispatcherWorkspace } from '../freight-dispatcher/FreightDispatcherWorkspace'
+import { PassengerDispatcherOverviewWidgets } from '../passenger-dispatcher/overview/PassengerDispatcherOverviewWidgets'
+import { PassengerDispatcherWorkspace } from '../passenger-dispatcher/PassengerDispatcherWorkspace'
+import { OpsEngineerOverviewWidgets } from '../ops-engineer/overview/OpsEngineerOverviewWidgets'
+import { OpsEngineerWorkspace } from '../ops-engineer/OpsEngineerWorkspace'
 import { CesiumViewport } from '../cesium/CesiumViewport'
 import { BottomConsole } from './BottomConsole'
 import { LeftPanel, RightPanel } from '../widgets/StatsPanel'
@@ -16,6 +20,8 @@ type Props = {
 
 const PORT_DIRECTOR = 'port_director'
 const FREIGHT_DISPATCHER = 'freight_dispatcher'
+const PASSENGER_DISPATCHER = 'passenger_dispatcher'
+const OPS_ENGINEER = 'ops_engineer'
 
 export function MainWorkspace(props: Props) {
   const { activeNav, twinHomeLabel, roleKey } = props
@@ -38,6 +44,50 @@ export function MainWorkspace(props: Props) {
     return (
       <div className="screen-body screen-body--director">
         <FreightDispatcherWorkspace activeNav={activeNav} />
+      </div>
+    )
+  }
+
+  if (roleKey === PASSENGER_DISPATCHER) {
+    const isPassengerHome = activeNav === twinHomeLabel
+    if (isPassengerHome) {
+      return (
+        <div className="screen-body">
+          <div className="screen-main screen-main--map-only">
+            <div className="stage stage--floating-widgets">
+              <CesiumViewport />
+              <PassengerDispatcherOverviewWidgets />
+            </div>
+          </div>
+          <BottomConsole />
+        </div>
+      )
+    }
+    return (
+      <div className="screen-body screen-body--director">
+        <PassengerDispatcherWorkspace activeNav={activeNav} />
+      </div>
+    )
+  }
+
+  if (roleKey === OPS_ENGINEER) {
+    const isOpsHome = activeNav === twinHomeLabel
+    if (isOpsHome) {
+      return (
+        <div className="screen-body">
+          <div className="screen-main screen-main--map-only">
+            <div className="stage stage--floating-widgets">
+              <CesiumViewport />
+              <OpsEngineerOverviewWidgets />
+            </div>
+          </div>
+          <BottomConsole />
+        </div>
+      )
+    }
+    return (
+      <div className="screen-body screen-body--director">
+        <OpsEngineerWorkspace activeNav={activeNav} />
       </div>
     )
   }

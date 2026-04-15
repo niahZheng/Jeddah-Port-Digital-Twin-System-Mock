@@ -59,25 +59,29 @@ function ensureDashboardLayoutsUniqueIndex(database: Database.Database) {
 }
 
 function seedIfEmpty(database: Database.Database) {
-  const row = database.prepare('SELECT COUNT(*) AS c FROM roles').get() as { c: number }
-  if (row.c > 0) return
+  const upsertRole = database.prepare(`
+    INSERT INTO roles (key, name) VALUES (@key, @name)
+    ON CONFLICT(key) DO UPDATE SET name = excluded.name
+  `)
+  upsertRole.run({ key: ROLE_KEYS.PORT_DIRECTOR, name: '港口运营总监' })
+  upsertRole.run({ key: ROLE_KEYS.FREIGHT_DISPATCHER, name: '货运调度员' })
+  upsertRole.run({ key: ROLE_KEYS.PASSENGER_DISPATCHER, name: '客运调度员' })
+  upsertRole.run({ key: ROLE_KEYS.OPS_ENGINEER, name: '设备运维工程师' })
 
-  const insertRole = database.prepare(
-    'INSERT INTO roles (key, name) VALUES (@key, @name)',
-  )
-  insertRole.run({ key: ROLE_KEYS.PORT_DIRECTOR, name: '港口运营总监' })
-  insertRole.run({ key: ROLE_KEYS.FREIGHT_DISPATCHER, name: '货运调度员' })
+  const getRoleId = database.prepare('SELECT id FROM roles WHERE key = ?')
+  const r1 = getRoleId.get(ROLE_KEYS.PORT_DIRECTOR) as { id: number }
+  const r2 = getRoleId.get(ROLE_KEYS.FREIGHT_DISPATCHER) as { id: number }
+  const r3 = getRoleId.get(ROLE_KEYS.PASSENGER_DISPATCHER) as { id: number }
+  const r4 = getRoleId.get(ROLE_KEYS.OPS_ENGINEER) as { id: number }
 
-  const r1 = database
-    .prepare('SELECT id FROM roles WHERE key = ?')
-    .get(ROLE_KEYS.PORT_DIRECTOR) as { id: number }
-  const r2 = database
-    .prepare('SELECT id FROM roles WHERE key = ?')
-    .get(ROLE_KEYS.FREIGHT_DISPATCHER) as { id: number }
-
-  const insertUser = database.prepare(
-    'INSERT INTO users (username, password_hash, role_id) VALUES (?, ?, ?)',
-  )
-  insertUser.run('port_director', bcrypt.hashSync('PortDir@2026', 10), r1.id)
-  insertUser.run('freight_dispatcher', bcrypt.hashSync('FreightDisp@2026', 10), r2.id)
+  const upsertUser = database.prepare(`
+    INSERT INTO users (username, password_hash, role_id) VALUES (?, ?, ?)
+    ON CONFLICT(username) DO UPDATE SET
+      password_hash = excluded.password_hash,
+      role_id = excluded.role_id
+  `)
+  upsertUser.run('port_director', bcrypt.hashSync('PortDir@2026', 10), r1.id)
+  upsertUser.run('freight_dispatcher', bcrypt.hashSync('FreightDisp@2026', 10), r2.id)
+  upsertUser.run('passenger_dispatcher', bcrypt.hashSync('PassengerDisp@2026', 10), r3.id)
+  upsertUser.run('ops_engineer', bcrypt.hashSync('OpsEng@2026', 10), r4.id)
 }

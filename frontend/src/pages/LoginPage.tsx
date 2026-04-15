@@ -60,7 +60,9 @@ export function LoginPage() {
         </form>
         <p className="login-hint">
           演示账户：港口运营总监 <code>port_director</code> / <code>PortDir@2026</code>；货运调度员{' '}
-          <code>freight_dispatcher</code> / <code>FreightDisp@2026</code>
+          <code>freight_dispatcher</code> / <code>FreightDisp@2026</code>；客运调度员{' '}
+          <code>passenger_dispatcher</code> / <code>PassengerDisp@2026</code>；设备运维工程师{' '}
+          <code>ops_engineer</code> / <code>OpsEng@2026</code>
         </p>
       </div>
     </div>
