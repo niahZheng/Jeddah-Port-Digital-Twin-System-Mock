@@ -15,9 +15,11 @@ const serviceDigest = [
 
 export function PassengerDispatcherOverviewWidgets() {
   const layerRef = useRef<HTMLDivElement>(null)
+  const pageKey = 'passenger_dispatcher_home'
   return (
     <div className="overview-widgets-layer" ref={layerRef}>
       <DraggableWidget
+        pageKey={pageKey}
         id="pd-home-plan"
         title="当日客运业务计划"
         containerRef={layerRef}
@@ -33,6 +35,7 @@ export function PassengerDispatcherOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="pd-home-service"
         title="客运服务与保障"
         containerRef={layerRef}

@@ -1,33 +1,11 @@
 import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
-
-const STORAGE_PREFIX = 'jeddah-overview-widget:'
+import { fetchWidgetState, saveWidgetState } from '../../../api/client'
+import { useAuthStore } from '../../../store/authStore'
 
 type StoredLayout = { left: number; top: number; collapsed: boolean }
 
-function readStored(id: string, defaults: { left: number; top: number }): StoredLayout {
-  try {
-    const raw = localStorage.getItem(STORAGE_PREFIX + id)
-    if (!raw) return { ...defaults, collapsed: false }
-    const j = JSON.parse(raw) as Partial<StoredLayout>
-    return {
-      left: typeof j.left === 'number' ? j.left : defaults.left,
-      top: typeof j.top === 'number' ? j.top : defaults.top,
-      collapsed: Boolean(j.collapsed),
-    }
-  } catch {
-    return { ...defaults, collapsed: false }
-  }
-}
-
-function writeStored(id: string, layout: StoredLayout) {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + id, JSON.stringify(layout))
-  } catch {
-    /* ignore */
-  }
-}
-
 type Props = {
+  pageKey: string
   id: string
   title: string
   containerRef: RefObject<HTMLElement | null>
@@ -39,11 +17,14 @@ type Props = {
 }
 
 export function DraggableWidget(props: Props) {
-  const { id, title, containerRef, defaultLeft, defaultTop, width = 320, aside, children } = props
-  const initial = readStored(id, { left: defaultLeft, top: defaultTop })
-  const [left, setLeft] = useState(initial.left)
-  const [top, setTop] = useState(initial.top)
-  const [collapsed, setCollapsed] = useState(initial.collapsed)
+  const { pageKey, id, title, containerRef, defaultLeft, defaultTop, width = 320, aside, children } =
+    props
+  const [left, setLeft] = useState(defaultLeft)
+  const [top, setTop] = useState(defaultTop)
+  const [collapsed, setCollapsed] = useState(false)
+  const token = useAuthStore((s) => s.token)
+  const hasLoadedRef = useRef(false)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dragRef = useRef<{
     pointerId: number
     offsetX: number
@@ -70,9 +51,38 @@ export function DraggableWidget(props: Props) {
   )
 
   useLayoutEffect(() => {
-    const c = { left, top, collapsed }
-    writeStored(id, c)
-  }, [id, left, top, collapsed])
+    if (!token) return
+    hasLoadedRef.current = false
+    setLeft(defaultLeft)
+    setTop(defaultTop)
+    setCollapsed(false)
+    void fetchWidgetState(token, pageKey, id)
+      .then((res) => {
+        if (!res.state) return
+        setLeft(res.state.left)
+        setTop(res.state.top)
+        setCollapsed(res.state.collapsed)
+      })
+      .catch(() => {})
+      .finally(() => {
+        hasLoadedRef.current = true
+      })
+  }, [token, pageKey, id, defaultLeft, defaultTop])
+
+  useLayoutEffect(() => {
+    if (!token || !hasLoadedRef.current) return
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    const state: StoredLayout = { left, top, collapsed }
+    saveTimerRef.current = setTimeout(() => {
+      void saveWidgetState(token, pageKey, id, state).catch(() => {})
+    }, 250)
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current)
+        saveTimerRef.current = null
+      }
+    }
+  }, [token, pageKey, id, left, top, collapsed])
 
   const onPointerDownHeader = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('button')) return

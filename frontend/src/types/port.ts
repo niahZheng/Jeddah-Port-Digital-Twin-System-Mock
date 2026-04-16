@@ -20,6 +20,11 @@ export interface ShipData {
   speed: number
   status: 'anchored' | 'moored' | 'underway'
   vesselType?: VesselType
+  /**
+   * 船模竖直 Z 轴偏移（米），相对 **WGS84 椭球高 h=0 参考面**：
+   * 正值上浮、负值下沉、0 贴参考面。
+   */
+  draftMeters?: number
 }
 
 export interface PortStats {

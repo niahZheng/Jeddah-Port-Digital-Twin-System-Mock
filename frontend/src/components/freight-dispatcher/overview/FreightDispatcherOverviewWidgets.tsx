@@ -18,12 +18,14 @@ function formatWeight(t: number) {
 
 export function FreightDispatcherOverviewWidgets() {
   const layerRef = useRef<HTMLDivElement>(null)
+  const pageKey = 'freight_dispatcher_home'
   const { data, err } = useFreightDispatcherOverviewData()
 
   if (err) {
     return (
       <div className="overview-widgets-layer" ref={layerRef}>
         <DraggableWidget
+          pageKey={pageKey}
           id="fd-overview-error"
           title="数据提示"
           containerRef={layerRef}
@@ -41,6 +43,7 @@ export function FreightDispatcherOverviewWidgets() {
     return (
       <div className="overview-widgets-layer" ref={layerRef}>
         <DraggableWidget
+          pageKey={pageKey}
           id="fd-overview-loading"
           title="货运业务准备"
           containerRef={layerRef}
@@ -69,6 +72,7 @@ export function FreightDispatcherOverviewWidgets() {
   return (
     <div className="overview-widgets-layer" ref={layerRef}>
       <DraggableWidget
+        pageKey={pageKey}
         id="fd-ship-plan"
         title="船舶到港 / 离港计划"
         containerRef={layerRef}
@@ -113,6 +117,7 @@ export function FreightDispatcherOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="fd-manifest"
         title="货物运输清单"
         containerRef={layerRef}
@@ -152,6 +157,7 @@ export function FreightDispatcherOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="fd-yard-plan"
         title="堆场分配计划"
         containerRef={layerRef}
@@ -186,6 +192,7 @@ export function FreightDispatcherOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="fd-vehicle-plan"
         title="车辆转运计划"
         containerRef={layerRef}
@@ -220,6 +227,7 @@ export function FreightDispatcherOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="fd-goals"
         title="当日业务重点与目标"
         containerRef={layerRef}

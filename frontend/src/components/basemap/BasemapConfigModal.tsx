@@ -1,0 +1,772 @@
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
+import { createPortal } from 'react-dom'
+import {
+  createBasemapEntity,
+  deleteBasemapEntity,
+  deleteShipDraftOverride,
+  fetchBasemapEntities,
+  fetchShipDraftList,
+  putShipDraftOverride,
+  updateBasemapEntity,
+} from '../../api/client'
+import { SHIP_DRAFTS_UPDATED_EVENT } from '../../cesium/cameraEvents'
+import { useAuthStore } from '../../store/authStore'
+import { useBasemapStore } from '../../store/basemapStore'
+import type { BasemapEntity, BasemapEntityKind, ShipDraftConfigItem } from '../../types/basemap'
+
+type Props = {
+  open: boolean
+  onClose: () => void
+}
+
+function emptyZonePointsJson() {
+  return JSON.stringify(
+    [
+      { longitude: 39.154, latitude: 21.476, height: 0 },
+      { longitude: 39.156, latitude: 21.476, height: 0 },
+      { longitude: 39.155, latitude: 21.478, height: 0 },
+    ],
+    null,
+    2,
+  )
+}
+
+export function BasemapConfigModal({ open, onClose }: Props) {
+  const token = useAuthStore((s) => s.token)
+  const setStoreEntities = useBasemapStore((s) => s.setEntities)
+  const [items, setItems] = useState<BasemapEntity[]>([])
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saveOk, setSaveOk] = useState<string | null>(null)
+  const [mainPanel, setMainPanel] = useState<'entities' | 'shipDrafts'>('entities')
+  const [shipDraftRows, setShipDraftRows] = useState<ShipDraftConfigItem[]>([])
+  const [shipDraftInputs, setShipDraftInputs] = useState<Record<string, string>>({})
+  const [shipDraftLoading, setShipDraftLoading] = useState(false)
+  const [shipDraftError, setShipDraftError] = useState<string | null>(null)
+  /** 弹窗左上角相对视口，默认 (0,0) 对齐页面左上角 */
+  const [modalPos, setModalPos] = useState({ x: 0, y: 0 })
+  const dragRef = useRef<{
+    pointerId: number
+    startClientX: number
+    startClientY: number
+    originX: number
+    originY: number
+  } | null>(null)
+
+  const refresh = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const list = await fetchBasemapEntities()
+      setItems(list)
+      setStoreEntities(list)
+      setSelectedId((prev) => (prev && list.some((x) => x.id === prev) ? prev : list[0]?.id ?? null))
+    } catch {
+      setError('加载底图配置失败')
+    } finally {
+      setLoading(false)
+    }
+  }, [setStoreEntities])
+
+  useEffect(() => {
+    if (!open) return
+    setModalPos({ x: 0, y: 0 })
+    dragRef.current = null
+    setMainPanel('entities')
+    void refresh()
+  }, [open, refresh])
+
+  const loadShipDrafts = useCallback(async () => {
+    setShipDraftLoading(true)
+    setShipDraftError(null)
+    try {
+      const { items } = await fetchShipDraftList()
+      setShipDraftRows(items)
+      setShipDraftInputs({})
+    } catch {
+      setShipDraftError('加载船模下沉配置失败')
+    } finally {
+      setShipDraftLoading(false)
+    }
+  }, [])
+
+  const saveShipDraftRow = async (mmsi: string) => {
+    if (!token) {
+      setShipDraftError('请先登录后再保存')
+      return
+    }
+    const row = shipDraftRows.find((r) => r.mmsi === mmsi)
+    const raw = shipDraftInputs[mmsi] ?? (row != null ? String(row.draftMeters) : '')
+    const v = Number(raw)
+    if (!Number.isFinite(v)) {
+      setShipDraftError('Z轴偏移须为数字（可正可负，单位米）')
+      return
+    }
+    setShipDraftError(null)
+    try {
+      await putShipDraftOverride(token, mmsi, v)
+      window.dispatchEvent(new Event(SHIP_DRAFTS_UPDATED_EVENT))
+      await loadShipDrafts()
+    } catch (e) {
+      setShipDraftError(e instanceof Error ? e.message : '保存失败')
+    }
+  }
+
+  const resetShipDraftRow = async (mmsi: string) => {
+    if (!token) {
+      setShipDraftError('请先登录')
+      return
+    }
+    setShipDraftError(null)
+    try {
+      await deleteShipDraftOverride(token, mmsi)
+      window.dispatchEvent(new Event(SHIP_DRAFTS_UPDATED_EVENT))
+      await loadShipDrafts()
+    } catch (e) {
+      setShipDraftError(e instanceof Error ? e.message : '恢复默认失败')
+    }
+  }
+
+  const clampModalPosition = useCallback((x: number, y: number) => {
+    const minVisible = 72
+    const maxX = Math.max(0, window.innerWidth - minVisible)
+    const maxY = Math.max(0, window.innerHeight - minVisible)
+    return {
+      x: Math.max(0, Math.min(x, maxX)),
+      y: Math.max(0, Math.min(y, maxY)),
+    }
+  }, [])
+
+  const onDragHandlePointerDown = (e: ReactPointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      originX: modalPos.x,
+      originY: modalPos.y,
+    }
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const onDragHandlePointerMove = (e: ReactPointerEvent<HTMLElement>) => {
+    const d = dragRef.current
+    if (!d || e.pointerId !== d.pointerId) return
+    const dx = e.clientX - d.startClientX
+    const dy = e.clientY - d.startClientY
+    setModalPos(clampModalPosition(d.originX + dx, d.originY + dy))
+  }
+
+  const onDragHandlePointerUp = (e: ReactPointerEvent<HTMLElement>) => {
+    const d = dragRef.current
+    if (!d || e.pointerId !== d.pointerId) return
+    dragRef.current = null
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      /* released */
+    }
+  }
+
+  const selected = useMemo(
+    () => items.find((x) => x.id === selectedId) ?? null,
+    [items, selectedId],
+  )
+
+  const patchSelected = (patch: Partial<BasemapEntity>) => {
+    if (!selectedId) return
+    setItems((prev) =>
+      prev.map((x) => {
+        if (x.id !== selectedId) return x
+        const next = { ...x, ...patch }
+        if (patch.kind === 'zone' && (!next.zonePoints || next.zonePoints.length < 3)) {
+          next.zonePoints = JSON.parse(emptyZonePointsJson()) as BasemapEntity['zonePoints']
+        }
+        return next
+      }),
+    )
+  }
+
+  const handleSave = async () => {
+    if (!token) {
+      setError('请先登录后再保存底图配置')
+      return
+    }
+    if (!selected) return
+    setError(null)
+    setSaveOk(null)
+    setLoading(true)
+    try {
+      const body = entityToApiBody(selected)
+      await updateBasemapEntity(token, selected.id, body)
+      setSaveOk('已保存')
+      window.setTimeout(() => setSaveOk(null), 1500)
+      const list = await fetchBasemapEntities()
+      setItems(list)
+      setStoreEntities(list)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '保存失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAdd = async () => {
+    if (!token) {
+      setError('请先登录后再新增条目')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const created = await createBasemapEntity(token, {
+        kind: 'model',
+        name: '新底图模型',
+        visible: true,
+        glbUri: '/models/crane_harbour.glb',
+        longitude: 39.15,
+        latitude: 21.47,
+        height: 0,
+        scale: 1,
+        headingDeg: 0,
+        rotationMode: 'fixed',
+        trackMmsi: null,
+        heightRef: 'clamp',
+        labelText: null,
+        sortOrder: 900,
+      })
+      const list = await fetchBasemapEntities()
+      setItems(list)
+      setStoreEntities(list)
+      setSelectedId(created.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '新增失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAddZone = async () => {
+    if (!token) {
+      setError('请先登录后再新增条目')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const created = await createBasemapEntity(token, {
+        kind: 'zone',
+        name: '新装卸区',
+        visible: true,
+        glbUri: null,
+        longitude: null,
+        latitude: null,
+        height: null,
+        scale: 1,
+        headingDeg: 0,
+        rotationMode: 'fixed',
+        trackMmsi: null,
+        heightRef: 'clamp',
+        zoneCode: 'ZONE',
+        zonePoints: JSON.parse(emptyZonePointsJson()) as BasemapEntity['zonePoints'],
+        fillColor: '#22d3ee',
+        outlineColor: '#38bdf8',
+        sortOrder: 50,
+      })
+      const list = await fetchBasemapEntities()
+      setItems(list)
+      setStoreEntities(list)
+      setSelectedId(created.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '新增失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!token) {
+      setError('请先登录后再删除')
+      return
+    }
+    if (!selected) return
+    if (!window.confirm(`确定删除「${selected.name}」？`)) return
+    setError(null)
+    setLoading(true)
+    try {
+      await deleteBasemapEntity(token, selected.id)
+      const list = await fetchBasemapEntities()
+      setItems(list)
+      setStoreEntities(list)
+      setSelectedId(list[0]?.id ?? null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  if (!open) return null
+
+  return createPortal(
+    <div className="basemap-modal-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="basemap-modal"
+        role="dialog"
+        aria-labelledby="basemap-modal-title"
+        style={{ left: modalPos.x, top: modalPos.y }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header
+          className="basemap-modal-header basemap-modal-drag-handle"
+          onPointerDown={onDragHandlePointerDown}
+          onPointerMove={onDragHandlePointerMove}
+          onPointerUp={onDragHandlePointerUp}
+          onPointerCancel={onDragHandlePointerUp}
+        >
+          <h2 id="basemap-modal-title">底图配置</h2>
+          <button
+            type="button"
+            className="basemap-modal-close"
+            onClick={onClose}
+            aria-label="关闭"
+            onPointerDown={(ev) => ev.stopPropagation()}
+          >
+            ×
+          </button>
+        </header>
+        <p className="basemap-modal-hint">
+          {mainPanel === 'entities' ? (
+            <>
+              列表与地图联动：仅「显示」为开的条目会渲染到 Cesium。修改后请保存；新增/删除需登录。
+            </>
+          ) : (
+            <>
+              配置的是船模在<strong>竖直方向</strong>上的<strong>Z轴偏移（米）</strong>，相对该船经纬度处椭球零高参考面（h=0）：
+              正值上浮，负值下沉，0 贴参考面。按 MMSI 写入数据库后立刻刷新三维；恢复默认则沿用 mock 默认偏移值。
+            </>
+          )}
+        </p>
+        <nav className="basemap-modal-tabs" aria-label="底图配置分区">
+          <button
+            type="button"
+            className={mainPanel === 'entities' ? 'active' : ''}
+            onClick={() => setMainPanel('entities')}
+          >
+            底图实体
+          </button>
+          <button
+            type="button"
+            className={mainPanel === 'shipDrafts' ? 'active' : ''}
+            onClick={() => {
+              setMainPanel('shipDrafts')
+              void loadShipDrafts()
+            }}
+          >
+            船模Z轴
+          </button>
+        </nav>
+        {mainPanel === 'shipDrafts' ? (
+          <div className="basemap-ship-drafts-panel">
+            {shipDraftLoading && <p className="basemap-muted">加载中…</p>}
+            {shipDraftError && <p className="basemap-error">{shipDraftError}</p>}
+            <table className="basemap-ship-drafts-table">
+              <thead>
+                <tr>
+                  <th>船名</th>
+                  <th>MMSI</th>
+                  <th>Z轴偏移（米）</th>
+                  <th>mock 默认偏移</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {shipDraftRows.map((r) => (
+                  <tr key={r.mmsi}>
+                    <td>{r.name}</td>
+                    <td>
+                      <code className="basemap-mmsi">{r.mmsi}</code>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="-1000"
+                        className="basemap-ship-draft-input"
+                        value={shipDraftInputs[r.mmsi] ?? String(r.draftMeters)}
+                        onChange={(e) =>
+                          setShipDraftInputs((p) => ({ ...p, [r.mmsi]: e.target.value }))
+                        }
+                      />
+                    </td>
+                    <td>
+                      {r.mockDefaultDraftMeters}
+                      {r.usesDatabaseOverride ? (
+                        <span className="basemap-draft-badge">库覆盖</span>
+                      ) : null}
+                    </td>
+                    <td className="basemap-ship-draft-actions">
+                      <button type="button" onClick={() => void saveShipDraftRow(r.mmsi)}>
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        className="subtle"
+                        disabled={!r.usesDatabaseOverride}
+                        onClick={() => void resetShipDraftRow(r.mmsi)}
+                      >
+                        恢复默认
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+        <div className="basemap-modal-body">
+          <aside className="basemap-modal-list-panel">
+            <div className="basemap-modal-toolbar">
+              <button type="button" onClick={() => void handleAdd()} disabled={loading}>
+                新增模型
+              </button>
+              <button type="button" onClick={() => void handleAddZone()} disabled={loading}>
+                新增区域
+              </button>
+            </div>
+            <ul className="basemap-modal-list">
+              {items.map((row) => (
+                <li key={row.id}>
+                  <button
+                    type="button"
+                    className={row.id === selectedId ? 'active' : ''}
+                    onClick={() => setSelectedId(row.id)}
+                  >
+                    <span className="basemap-list-kind">{row.kind === 'zone' ? '区' : '模'}</span>
+                    <span className="basemap-list-name">{row.name}</span>
+                    {!row.visible && <span className="basemap-list-hidden">隐</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </aside>
+          <section className="basemap-modal-detail">
+            {loading && !selected && <p className="basemap-muted">加载中…</p>}
+            {!selected && !loading && <p className="basemap-muted">请选择左侧条目</p>}
+            {selected && (
+              <>
+                <div className="basemap-field-grid">
+                  <label>
+                    类型
+                    <select
+                      value={selected.kind}
+                      onChange={(e) => patchSelected({ kind: e.target.value as BasemapEntityKind })}
+                    >
+                      <option value="model">模型</option>
+                      <option value="zone">装卸区 / 多边形区域</option>
+                    </select>
+                  </label>
+                  <label>
+                    名称
+                    <input
+                      value={selected.name}
+                      onChange={(e) => patchSelected({ name: e.target.value })}
+                    />
+                  </label>
+                  <label className="basemap-check">
+                    <input
+                      type="checkbox"
+                      checked={selected.visible}
+                      onChange={(e) => patchSelected({ visible: e.target.checked })}
+                    />
+                    在地图上显示
+                  </label>
+                  <label>
+                    排序 sortOrder
+                    <input
+                      type="number"
+                      value={selected.sortOrder}
+                      onChange={(e) => patchSelected({ sortOrder: Number(e.target.value) })}
+                    />
+                  </label>
+                </div>
+
+                {selected.kind === 'zone' ? (
+                  <div className="basemap-field-grid">
+                    <label>
+                      区域代码
+                      <input
+                        value={selected.zoneCode ?? ''}
+                        onChange={(e) => patchSelected({ zoneCode: e.target.value || null })}
+                      />
+                    </label>
+                    <label className="basemap-field-full">
+                      多边形顶点 JSON（longitude, latitude, height）
+                      <textarea
+                        rows={8}
+                        value={zonePointsToText(selected.zonePoints)}
+                        onChange={(e) =>
+                          patchSelected({ zonePoints: parsePointsJson(e.target.value) })
+                        }
+                      />
+                    </label>
+                    <label>
+                      填充色
+                      <input
+                        value={selected.fillColor ?? ''}
+                        onChange={(e) => patchSelected({ fillColor: e.target.value || null })}
+                      />
+                    </label>
+                    <label>
+                      轮廓色
+                      <input
+                        value={selected.outlineColor ?? ''}
+                        onChange={(e) => patchSelected({ outlineColor: e.target.value || null })}
+                      />
+                    </label>
+                  </div>
+                ) : (
+                  <>
+                    <div className="basemap-field-grid">
+                      <label>
+                        经度
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={selected.longitude ?? ''}
+                          onChange={(e) =>
+                            patchSelected({
+                              longitude: e.target.value === '' ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        纬度
+                        <input
+                          type="number"
+                          step="0.000001"
+                          value={selected.latitude ?? ''}
+                          onChange={(e) =>
+                            patchSelected({
+                              latitude: e.target.value === '' ? null : Number(e.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        缩放
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={selected.scale}
+                          onChange={(e) => patchSelected({ scale: Number(e.target.value) })}
+                        />
+                      </label>
+                      <label>
+                        方向角（度）{selected.rotationMode === 'dynamic_track' ? '（相对船舶航向叠加）' : ''}
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={selected.headingDeg}
+                          onChange={(e) => patchSelected({ headingDeg: Number(e.target.value) })}
+                        />
+                      </label>
+                      <label>
+                        旋转模式
+                        <select
+                          value={selected.rotationMode}
+                          onChange={(e) =>
+                            patchSelected({
+                              rotationMode: e.target.value as BasemapEntity['rotationMode'],
+                            })
+                          }
+                        >
+                          <option value="fixed">固定朝向</option>
+                          <option value="dynamic_track">动态跟踪（绑定 MMSI）</option>
+                        </select>
+                      </label>
+                      {selected.rotationMode === 'dynamic_track' && (
+                        <label>
+                          跟踪船舶 MMSI
+                          <input
+                            value={selected.trackMmsi ?? ''}
+                            onChange={(e) => patchSelected({ trackMmsi: e.target.value || null })}
+                          />
+                        </label>
+                      )}
+                      <label>
+                        贴地模式
+                        <select
+                          value={selected.heightRef}
+                          onChange={(e) =>
+                            patchSelected({ heightRef: e.target.value as BasemapEntity['heightRef'] })
+                          }
+                        >
+                          <option value="clamp">贴地（clamp）</option>
+                          <option value="none">绝对高度（none）</option>
+                        </select>
+                      </label>
+                      <label className="basemap-field-full">
+                        GLB 路径（如 /models/crane_harbour.glb）
+                        <input
+                          value={selected.glbUri ?? ''}
+                          onChange={(e) => patchSelected({ glbUri: e.target.value || null })}
+                        />
+                      </label>
+                      <label>
+                        标签文字（可空）
+                        <input
+                          value={selected.labelText ?? ''}
+                          onChange={(e) => patchSelected({ labelText: e.target.value || null })}
+                        />
+                      </label>
+                    </div>
+                    <details className="basemap-patrol-details">
+                      <summary>巡逻路径（可选，多个顶点则按路径运动）</summary>
+                      <label className="basemap-field-full">
+                        pathPoints JSON
+                        <textarea
+                          rows={5}
+                          value={pathPointsToText(selected.pathPoints)}
+                          onChange={(e) =>
+                            patchSelected({ pathPoints: parsePointsJson(e.target.value) })
+                          }
+                        />
+                      </label>
+                      <div className="basemap-field-grid">
+                        <label>
+                          车辆数量
+                          <input
+                            type="number"
+                            min={1}
+                            value={selected.patrolTruckCount ?? ''}
+                            onChange={(e) =>
+                              patchSelected({
+                                patrolTruckCount:
+                                  e.target.value === '' ? null : Math.max(1, Number(e.target.value)),
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          路段时长（秒）
+                          <input
+                            type="number"
+                            min={0.5}
+                            step={0.5}
+                            value={selected.patrolSegmentSeconds ?? ''}
+                            onChange={(e) =>
+                              patchSelected({
+                                patrolSegmentSeconds:
+                                  e.target.value === '' ? null : Number(e.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          车间隔（秒）
+                          <input
+                            type="number"
+                            min={0}
+                            value={selected.patrolStaggerSeconds ?? ''}
+                            onChange={(e) =>
+                              patchSelected({
+                                patrolStaggerSeconds:
+                                  e.target.value === '' ? null : Number(e.target.value),
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    </details>
+                  </>
+                )}
+
+                <div className="basemap-modal-actions">
+                  <button type="button" onClick={() => void handleSave()} disabled={loading}>
+                    保存到服务器
+                  </button>
+                  <button type="button" className="danger" onClick={() => void handleDelete()} disabled={loading}>
+                    删除条目
+                  </button>
+                  {saveOk && <span className="basemap-ok">{saveOk}</span>}
+                </div>
+                {error && <p className="basemap-error">{error}</p>}
+              </>
+            )}
+          </section>
+        </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+function entityToApiBody(e: BasemapEntity): Record<string, unknown> {
+  return {
+    id: e.id,
+    kind: e.kind,
+    name: e.name,
+    visible: e.visible,
+    glbUri: e.glbUri,
+    longitude: e.longitude,
+    latitude: e.latitude,
+    height: e.height,
+    scale: e.scale,
+    headingDeg: e.headingDeg,
+    rotationMode: e.rotationMode,
+    trackMmsi: e.trackMmsi,
+    heightRef: e.heightRef,
+    labelText: e.labelText,
+    zoneCode: e.zoneCode,
+    zonePoints: e.zonePoints,
+    fillColor: e.fillColor,
+    outlineColor: e.outlineColor,
+    pathPoints: e.pathPoints,
+    patrolTruckCount: e.patrolTruckCount,
+    patrolSegmentSeconds: e.patrolSegmentSeconds,
+    patrolStaggerSeconds: e.patrolStaggerSeconds,
+    sortOrder: e.sortOrder,
+  }
+}
+
+function zonePointsToText(pts: BasemapEntity['zonePoints']): string {
+  if (!pts || pts.length === 0) return emptyZonePointsJson()
+  return JSON.stringify(pts, null, 2)
+}
+
+function pathPointsToText(pts: BasemapEntity['pathPoints']): string {
+  if (!pts || pts.length === 0) return ''
+  return JSON.stringify(pts, null, 2)
+}
+
+function parsePointsJson(text: string): BasemapEntity['zonePoints'] {
+  try {
+    const v = JSON.parse(text) as unknown
+    if (!Array.isArray(v)) return null
+    const out: NonNullable<BasemapEntity['zonePoints']> = []
+    for (const item of v) {
+      if (typeof item !== 'object' || item === null) continue
+      const o = item as Record<string, unknown>
+      const longitude = Number(o.longitude)
+      const latitude = Number(o.latitude)
+      const height = o.height != null ? Number(o.height) : 0
+      if (!Number.isFinite(longitude) || !Number.isFinite(latitude) || !Number.isFinite(height)) continue
+      out.push({ longitude, latitude, height })
+    }
+    return out.length ? out : null
+  } catch {
+    return null
+  }
+}

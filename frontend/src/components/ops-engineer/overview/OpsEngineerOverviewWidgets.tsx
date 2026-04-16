@@ -15,9 +15,11 @@ const focusRows = [
 
 export function OpsEngineerOverviewWidgets() {
   const layerRef = useRef<HTMLDivElement>(null)
+  const pageKey = 'ops_engineer_home'
   return (
     <div className="overview-widgets-layer" ref={layerRef}>
       <DraggableWidget
+        pageKey={pageKey}
         id="oe-home-plan"
         title="当日设备运维计划"
         containerRef={layerRef}
@@ -32,6 +34,7 @@ export function OpsEngineerOverviewWidgets() {
         </ul>
       </DraggableWidget>
       <DraggableWidget
+        pageKey={pageKey}
         id="oe-home-focus"
         title="维护与故障重点"
         containerRef={layerRef}

@@ -13,6 +13,7 @@ function formatTime(iso: string) {
 
 export function DirectorOverviewWidgets() {
   const layerRef = useRef<HTMLDivElement>(null)
+  const pageKey = 'director_home'
   const {
     data,
     live,
@@ -31,6 +32,7 @@ export function DirectorOverviewWidgets() {
     return (
       <div className="overview-widgets-layer" ref={layerRef}>
         <DraggableWidget
+          pageKey={pageKey}
           id="overview-error"
           title="数据提示"
           containerRef={layerRef}
@@ -48,6 +50,7 @@ export function DirectorOverviewWidgets() {
     return (
       <div className="overview-widgets-layer" ref={layerRef}>
         <DraggableWidget
+          pageKey={pageKey}
           id="overview-loading"
           title="港口业务全景"
           containerRef={layerRef}
@@ -76,6 +79,7 @@ export function DirectorOverviewWidgets() {
   return (
     <div className="overview-widgets-layer" ref={layerRef}>
       <DraggableWidget
+        pageKey={pageKey}
         id="kpi"
         title="核心 KPI"
         containerRef={layerRef}
@@ -115,6 +119,7 @@ export function DirectorOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="digest"
         title="船舶到离港摘要"
         containerRef={layerRef}
@@ -139,6 +144,7 @@ export function DirectorOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="trend"
         title="分时趋势（示意）"
         containerRef={layerRef}
@@ -184,6 +190,7 @@ export function DirectorOverviewWidgets() {
       </DraggableWidget>
 
       <DraggableWidget
+        pageKey={pageKey}
         id="alerts"
         title="预警速览"
         containerRef={layerRef}

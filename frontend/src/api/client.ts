@@ -14,6 +14,13 @@ import type {
 } from '../types/freightDispatcher'
 import type { AlertItem, PortDataMessage, PortStats, ShipData } from '../types/port'
 import type { DashboardLayout, DashboardLayoutResponse } from '../types/layout'
+import type {
+  CameraViewResponse,
+  CameraViewState,
+  WidgetState,
+  WidgetStateResponse,
+} from '../types/preferences'
+import type { BasemapEntity, ShipDraftConfigItem } from '../types/basemap'
 
 const api = (path: string) => (import.meta.env.VITE_API_BASE ?? '') + path
 
@@ -167,6 +174,228 @@ export async function saveDashboardLayout(
   return j as DashboardLayoutResponse
 }
 
+export async function fetchCameraView(
+  token: string,
+  viewKey: string,
+): Promise<CameraViewResponse> {
+  const r = await fetch(api(`/api/preferences/camera-view/${encodeURIComponent(viewKey)}`), {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!r.ok) throw new Error('camera view read')
+  return (await r.json()) as CameraViewResponse
+}
+
+export async function saveCameraView(
+  token: string,
+  viewKey: string,
+  view: CameraViewState,
+): Promise<CameraViewResponse> {
+  const r = await fetch(api(`/api/preferences/camera-view/${encodeURIComponent(viewKey)}`), {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ view }),
+  })
+  const j = (await r.json().catch(() => ({}))) as { error?: string } & Partial<CameraViewResponse>
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `保存默认视角失败 (${r.status})`)
+  }
+  if (!j.viewKey) {
+    throw new Error('保存默认视角响应无效')
+  }
+  return j as CameraViewResponse
+}
+
+export async function fetchWidgetState(
+  token: string,
+  pageKey: string,
+  widgetId: string,
+): Promise<WidgetStateResponse> {
+  const r = await fetch(
+    api(
+      `/api/preferences/widget-state/${encodeURIComponent(pageKey)}/${encodeURIComponent(widgetId)}`,
+    ),
+    {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  )
+  if (!r.ok) throw new Error('widget state read')
+  return (await r.json()) as WidgetStateResponse
+}
+
+export async function fetchShipDraftList(): Promise<{ items: ShipDraftConfigItem[] }> {
+  const r = await fetch(api('/api/basemap/ship-drafts'))
+  if (!r.ok) throw new Error('ship drafts read')
+  const j = (await r.json()) as { items?: unknown[] }
+  if (!Array.isArray(j.items)) throw new Error('ship drafts invalid')
+  return {
+    items: j.items.map((row) => {
+      const o = row as Record<string, unknown>
+      return {
+        mmsi: String(o.mmsi),
+        name: String(o.name ?? ''),
+        draftMeters: Number(o.draftMeters),
+        usesDatabaseOverride: o.usesDatabaseOverride === true,
+        mockDefaultDraftMeters: Number(o.mockDefaultDraftMeters ?? 0),
+      }
+    }),
+  }
+}
+
+export async function putShipDraftOverride(
+  token: string,
+  mmsi: string,
+  draftMeters: number,
+): Promise<void> {
+  const r = await fetch(api(`/api/basemap/ship-drafts/${encodeURIComponent(mmsi)}`), {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ draftMeters }),
+  })
+  const j = (await r.json().catch(() => ({}))) as { error?: string }
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `保存Z轴偏移失败 (${r.status})`)
+  }
+}
+
+export async function deleteShipDraftOverride(token: string, mmsi: string): Promise<void> {
+  const r = await fetch(api(`/api/basemap/ship-drafts/${encodeURIComponent(mmsi)}`), {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const j = (await r.json().catch(() => ({}))) as { error?: string }
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `恢复默认失败 (${r.status})`)
+  }
+}
+
+export async function fetchBasemapEntities(): Promise<BasemapEntity[]> {
+  const r = await fetch(api('/api/basemap/entities'))
+  if (!r.ok) throw new Error('basemap entities read')
+  const j = (await r.json()) as { entities?: unknown[] }
+  if (!Array.isArray(j.entities)) throw new Error('basemap entities invalid')
+  return j.entities.map((e) => parseBasemapEntity(e as Record<string, unknown>))
+}
+
+export async function createBasemapEntity(
+  token: string,
+  body: Record<string, unknown>,
+): Promise<BasemapEntity> {
+  const r = await fetch(api('/api/basemap/entities'), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  const j = (await r.json().catch(() => ({}))) as { error?: string; entity?: unknown }
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `创建底图实体失败 (${r.status})`)
+  }
+  return parseBasemapEntity(j.entity as Record<string, unknown>)
+}
+
+export async function updateBasemapEntity(
+  token: string,
+  id: string,
+  body: Record<string, unknown>,
+): Promise<BasemapEntity> {
+  const r = await fetch(api(`/api/basemap/entities/${encodeURIComponent(id)}`), {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  const j = (await r.json().catch(() => ({}))) as { error?: string; entity?: unknown }
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `更新底图实体失败 (${r.status})`)
+  }
+  return parseBasemapEntity(j.entity as Record<string, unknown>)
+}
+
+export async function deleteBasemapEntity(token: string, id: string): Promise<void> {
+  const r = await fetch(api(`/api/basemap/entities/${encodeURIComponent(id)}`), {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  const j = (await r.json().catch(() => ({}))) as { error?: string }
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `删除底图实体失败 (${r.status})`)
+  }
+}
+
+function parseBasemapEntity(s: Record<string, unknown>): BasemapEntity {
+  const kind = s.kind === 'zone' ? 'zone' : 'model'
+  const rotationMode = s.rotationMode === 'dynamic_track' ? 'dynamic_track' : 'fixed'
+  const heightRef = s.heightRef === 'none' ? 'none' : 'clamp'
+  return {
+    id: String(s.id),
+    kind,
+    name: String(s.name ?? ''),
+    visible: s.visible !== false,
+    glbUri: s.glbUri == null ? null : String(s.glbUri),
+    longitude: s.longitude == null ? null : Number(s.longitude),
+    latitude: s.latitude == null ? null : Number(s.latitude),
+    height: s.height == null ? null : Number(s.height),
+    scale: Number(s.scale ?? 1),
+    headingDeg: Number(s.headingDeg ?? 0),
+    rotationMode,
+    trackMmsi: s.trackMmsi == null || s.trackMmsi === '' ? null : String(s.trackMmsi),
+    heightRef,
+    labelText: s.labelText == null || s.labelText === '' ? null : String(s.labelText),
+    zoneCode: s.zoneCode == null || s.zoneCode === '' ? null : String(s.zoneCode),
+    zonePoints: Array.isArray(s.zonePoints) ? (s.zonePoints as BasemapEntity['zonePoints']) : null,
+    fillColor: s.fillColor == null ? null : String(s.fillColor),
+    outlineColor: s.outlineColor == null ? null : String(s.outlineColor),
+    pathPoints: Array.isArray(s.pathPoints) ? (s.pathPoints as BasemapEntity['pathPoints']) : null,
+    patrolTruckCount:
+      s.patrolTruckCount == null ? null : Math.floor(Number(s.patrolTruckCount)),
+    patrolSegmentSeconds:
+      s.patrolSegmentSeconds == null ? null : Number(s.patrolSegmentSeconds),
+    patrolStaggerSeconds:
+      s.patrolStaggerSeconds == null ? null : Number(s.patrolStaggerSeconds),
+    sortOrder: Number(s.sortOrder ?? 0),
+    updatedAt: String(s.updatedAt ?? ''),
+  }
+}
+
+export async function saveWidgetState(
+  token: string,
+  pageKey: string,
+  widgetId: string,
+  state: WidgetState,
+): Promise<WidgetStateResponse> {
+  const r = await fetch(
+    api(
+      `/api/preferences/widget-state/${encodeURIComponent(pageKey)}/${encodeURIComponent(widgetId)}`,
+    ),
+    {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ state }),
+    },
+  )
+  const j = (await r.json().catch(() => ({}))) as { error?: string } & Partial<WidgetStateResponse>
+  if (!r.ok) {
+    throw new Error(typeof j.error === 'string' ? j.error : `保存组件状态失败 (${r.status})`)
+  }
+  if (!j.widgetId || !j.pageKey) {
+    throw new Error('保存组件状态响应无效')
+  }
+  return j as WidgetStateResponse
+}
+
 export async function fetchStats(): Promise<PortStats> {
   const r = await fetch(api('/api/stats'))
   if (!r.ok) throw new Error('stats')
@@ -177,7 +406,7 @@ export async function fetchShips(): Promise<ShipData[]> {
   const r = await fetch(api('/api/ships'))
   if (!r.ok) throw new Error('ships')
   const j = await r.json()
-  return (j.ships as Record<string, unknown>[]).map(toShipData)
+  return (j.ships as Record<string, unknown>[]).map(parseShipData)
 }
 
 export async function fetchAlerts(): Promise<AlertItem[]> {
@@ -187,13 +416,19 @@ export async function fetchAlerts(): Promise<AlertItem[]> {
   return j.alerts as AlertItem[]
 }
 
-function toShipData(s: Record<string, unknown>): ShipData {
+/** HTTP / WebSocket 船舶载荷统一解析（含 draftMeters: Z 轴偏移米数，坐标形状一致） */
+export function parseShipData(s: Record<string, unknown>): ShipData {
   const p = s.position as { longitude?: number; latitude?: number } | undefined
   const lon = p?.longitude ?? s.longitude
   const lat = p?.latitude ?? s.latitude
   const vt = s.vesselType as ShipData['vesselType'] | undefined
   const vesselType =
     vt === 'bulk' || vt === 'tanker' || vt === 'container' ? vt : undefined
+  const draftRaw = s.draftMeters
+  const draftMeters =
+    draftRaw != null && Number.isFinite(Number(draftRaw))
+      ? Number(draftRaw)
+      : undefined
   return {
     mmsi: String(s.mmsi),
     name: String(s.name),
@@ -202,6 +437,7 @@ function toShipData(s: Record<string, unknown>): ShipData {
     speed: Number(s.speed),
     status: s.status as ShipData['status'],
     vesselType,
+    draftMeters,
   }
 }
 

@@ -15,6 +15,7 @@ export type PortDataMessage =
         speed: number
         status: 'anchored' | 'moored' | 'underway'
         vesselType?: 'container' | 'bulk' | 'tanker'
+        draftMeters?: number
       }
     }
   | {
@@ -71,6 +72,7 @@ export function startBroadcastLoop() {
           speed: s.speed,
           status: s.status,
           vesselType: s.vesselType,
+          draftMeters: s.draftMeters,
         },
       })
     }

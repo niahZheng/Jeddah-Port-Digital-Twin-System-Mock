@@ -1,5 +1,6 @@
 import {
   Cartesian3,
+  Cartographic,
   Color,
   EllipsoidTerrainProvider,
   HeadingPitchRange,
@@ -31,6 +32,17 @@ const LIGHTHOUSE_ORBIT = {
   rangeMeters: 2350,
 }
 
+type CameraViewState = {
+  longitude: number
+  latitude: number
+  height: number
+  heading: number
+  pitch: number
+  roll: number
+}
+
+export const DEFAULT_CAMERA_VIEW_KEY = 'jeddah-port.default-camera-view'
+
 /**
  * 若配置了 VITE_CESIUM_ION_TOKEN 则替换为自有 Key（商用/提额）；
  * 未配置时保留 Cesium 内置评估用 Ion.defaultAccessToken，可直接使用 World Terrain 与 Ion 影像。
@@ -41,7 +53,12 @@ export function configureIonFromEnv() {
 }
 
 /** 以约 45° 俯角斜视吉达灯塔，并解除 lookAt 参考系（相机位置留在世界坐标系） */
-export function flyToJeddahLighthouse(viewer: Viewer) {
+export function flyToJeddahLighthouse(viewer: Viewer, defaultView?: CameraViewState | null) {
+  if (defaultView) {
+    applyCameraView(viewer, defaultView)
+    return
+  }
+
   const { longitude, latitude, lookAtHeightMeters } = JEDDAH_LIGHTHOUSE
   const target = Cartesian3.fromDegrees(longitude, latitude, lookAtHeightMeters)
   const heading = CesiumMath.toRadians(LIGHTHOUSE_ORBIT.headingDegrees)
@@ -59,6 +76,32 @@ export function bindHomeToLighthouse(viewer: Viewer) {
     flyToJeddahLighthouse(viewer)
   })
   viewer.homeButton.viewModel.tooltip = '恢复吉达灯塔斜视'
+}
+
+export function captureCameraView(viewer: Viewer): CameraViewState | null {
+  const cartographic = Cartographic.fromCartesian(viewer.camera.positionWC)
+  if (!cartographic) return null
+
+  return {
+    longitude: CesiumMath.toDegrees(cartographic.longitude),
+    latitude: CesiumMath.toDegrees(cartographic.latitude),
+    height: cartographic.height,
+    heading: viewer.camera.heading,
+    pitch: viewer.camera.pitch,
+    roll: viewer.camera.roll,
+  }
+}
+
+export function applyCameraView(viewer: Viewer, view: CameraViewState) {
+  viewer.camera.flyTo({
+    destination: Cartesian3.fromDegrees(view.longitude, view.latitude, view.height),
+    orientation: {
+      heading: view.heading,
+      pitch: view.pitch,
+      roll: view.roll,
+    },
+    duration: 0,
+  })
 }
 
 export function terrainFromMode(mode: TerrainMode, options?: any): Terrain {
