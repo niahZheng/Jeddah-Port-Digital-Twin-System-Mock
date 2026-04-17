@@ -2,6 +2,9 @@
 
 基于《演示版技术实现文档》的最小可运行 PoC：**React + Vite + CesiumJS** 大屏，**Express** 提供模拟 REST 与 WebSocket。
 
+![吉达港口数字孪生演示界面](docs/image1.png)
+![吉达港口数字孪生演示界面](docs/image2.png)
+
 ## 前置要求
 
 - Node.js 18+
