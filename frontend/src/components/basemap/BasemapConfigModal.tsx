@@ -26,6 +26,50 @@ type Props = {
   onClose: () => void
 }
 
+function IconCopyBasemap() {
+  return (
+    <svg
+      className="basemap-list-icon-svg"
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  )
+}
+
+function IconDeleteBasemap() {
+  return (
+    <svg
+      className="basemap-list-icon-svg"
+      xmlns="http://www.w3.org/2000/svg"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  )
+}
+
 function emptyZonePointsJson() {
   return JSON.stringify(
     [
@@ -60,6 +104,7 @@ export function BasemapConfigModal({ open, onClose }: Props) {
     originX: number
     originY: number
   } | null>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
     setLoading(true)
@@ -136,9 +181,11 @@ export function BasemapConfigModal({ open, onClose }: Props) {
   }
 
   const clampModalPosition = useCallback((x: number, y: number) => {
-    const minVisible = 72
-    const maxX = Math.max(0, window.innerWidth - minVisible)
-    const maxY = Math.max(0, window.innerHeight - minVisible)
+    const el = modalRef.current
+    const w = el?.offsetWidth ?? 960
+    const h = el?.offsetHeight ?? 640
+    const maxX = Math.max(0, window.innerWidth - w)
+    const maxY = Math.max(0, window.innerHeight - h)
     return {
       x: Math.max(0, Math.min(x, maxX)),
       y: Math.max(0, Math.min(y, maxY)),
@@ -299,17 +346,59 @@ export function BasemapConfigModal({ open, onClose }: Props) {
       return
     }
     if (!selected) return
-    if (!window.confirm(`确定删除「${selected.name}」？`)) return
+    await deleteBasemapRow(selected)
+  }
+
+  /** 从 SQLite 删除底图实体并刷新列表（与详情区「删除条目」一致） */
+  const deleteBasemapRow = async (row: BasemapEntity) => {
+    if (!token) {
+      setError('请先登录后再删除')
+      return
+    }
+    if (
+      !window.confirm(
+        `确定删除「${row.name}」？\n将仅从数据库删除本条（编号：${row.id}），不会删除其它条目。`,
+      )
+    )
+      return
     setError(null)
     setLoading(true)
     try {
-      await deleteBasemapEntity(token, selected.id)
+      await deleteBasemapEntity(token, row.id)
       const list = await fetchBasemapEntities()
       setItems(list)
       setStoreEntities(list)
-      setSelectedId(list[0]?.id ?? null)
+      setSelectedId((prev) => {
+        if (prev === row.id) return list[0]?.id ?? null
+        return prev && list.some((x) => x.id === prev) ? prev : list[0]?.id ?? null
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : '删除失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  /** 复制为一条新记录（新 id 写入 SQLite） */
+  const duplicateBasemapRow = async (row: BasemapEntity) => {
+    if (!token) {
+      setError('请先登录后再复制条目')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const body = { ...entityToApiBody(row), name: `${row.name}（副本）`, sortOrder: row.sortOrder + 1 }
+      delete (body as { id?: string }).id
+      const created = await createBasemapEntity(token, body)
+      const list = await fetchBasemapEntities()
+      setItems(list)
+      setStoreEntities(list)
+      setSelectedId(created.id)
+      setSaveOk('已复制并新建条目')
+      window.setTimeout(() => setSaveOk(null), 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '复制失败')
     } finally {
       setLoading(false)
     }
@@ -320,6 +409,7 @@ export function BasemapConfigModal({ open, onClose }: Props) {
   return createPortal(
     <div className="basemap-modal-backdrop" role="presentation" onClick={onClose}>
       <div
+        ref={modalRef}
         className="basemap-modal"
         role="dialog"
         aria-labelledby="basemap-modal-title"
@@ -347,7 +437,7 @@ export function BasemapConfigModal({ open, onClose }: Props) {
         <p className="basemap-modal-hint">
           {mainPanel === 'entities' ? (
             <>
-              列表与地图联动：仅「显示」为开的条目会渲染到 Cesium。修改后请保存；新增/删除需登录。
+              列表与地图联动：仅「显示」为开的条目会渲染到 Cesium。修改后请保存；新增、复制、删除均需登录，删除与复制会立即写入 SQLite。
             </>
           ) : (
             <>
@@ -445,7 +535,7 @@ export function BasemapConfigModal({ open, onClose }: Props) {
             </div>
             <ul className="basemap-modal-list">
               {items.map((row) => (
-                <li key={row.id}>
+                <li key={row.id} className="basemap-list-item">
                   <button
                     type="button"
                     className={row.id === selectedId ? 'active' : ''}
@@ -455,6 +545,36 @@ export function BasemapConfigModal({ open, onClose }: Props) {
                     <span className="basemap-list-name">{row.name}</span>
                     {!row.visible && <span className="basemap-list-hidden">隐</span>}
                   </button>
+                  <div className="basemap-list-item-actions">
+                    <button
+                      type="button"
+                      className="basemap-list-action basemap-list-action--icon"
+                      title="复制此条目：在数据库中按相同参数新增一条副本（新编号，其它条目不受影响）"
+                      aria-label="复制此条目：在数据库中按相同参数新增一条副本（新编号，其它条目不受影响）"
+                      disabled={loading}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void duplicateBasemapRow(row)
+                      }}
+                    >
+                      <IconCopyBasemap />
+                    </button>
+                    <button
+                      type="button"
+                      className="basemap-list-action basemap-list-action--icon danger"
+                      title="删除此条目：仅从数据库移除本条记录（按条目编号删除，不会删除其它条目）"
+                      aria-label="删除此条目：仅从数据库移除本条记录（按条目编号删除，不会删除其它条目）"
+                      disabled={loading}
+                      onClick={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        void deleteBasemapRow(row)
+                      }}
+                    >
+                      <IconDeleteBasemap />
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>
@@ -695,6 +815,13 @@ export function BasemapConfigModal({ open, onClose }: Props) {
                 <div className="basemap-modal-actions">
                   <button type="button" onClick={() => void handleSave()} disabled={loading}>
                     保存到服务器
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => selected && void duplicateBasemapRow(selected)}
+                    disabled={loading || !selected}
+                  >
+                    复制当前条目
                   </button>
                   <button type="button" className="danger" onClick={() => void handleDelete()} disabled={loading}>
                     删除条目

@@ -25,10 +25,19 @@ import type { ShipData } from '../types/port'
 import { shipDraftMeters } from './shipModels'
 
 let lastManagedBasemapIds: string[] = []
+const CY01_ZONE_CODE = 'CY-01'
+const CY01_CONTAINER_DIM_M = { length: 12.2, width: 2.6, height: 2.9 }
+const CY01_STACK_LAYERS = 2
+const CY01_GRID_SPACING_M = { x: 13.5, y: 3.2 }
+const CY01_MAX_CONTAINERS_TOTAL = 900
+const CY01_CONTAINER_COLORS = ['#f97316', '#22c55e', '#38bdf8', '#eab308', '#a78bfa']
 
 function basemapId(rowId: string, suffix = ''): string {
   return suffix ? `basemap:${rowId}:${suffix}` : `basemap:${rowId}`
 }
+
+/** 与 {@link basemapId} 一致，供外部（如控制台切换场桥动画）引用实体 id */
+export const BASEMAP_GANTRY_ENTITY_ID = basemapId('gantry-01')
 
 function calcZoneCenter(
   points: Array<{ longitude: number; latitude: number; height: number }>,
@@ -47,6 +56,89 @@ function resetViewerClock(viewer: Viewer) {
   viewer.clock.clockRange = ClockRange.UNBOUNDED
   viewer.clock.multiplier = 1
   viewer.clock.shouldAnimate = true
+}
+
+function metersToLongitudeDegrees(meters: number, latitudeDegrees: number): number {
+  const metersPerDegreeLon = 111320 * Math.cos((latitudeDegrees * Math.PI) / 180)
+  if (!Number.isFinite(metersPerDegreeLon) || metersPerDegreeLon <= 0) return 0
+  return meters / metersPerDegreeLon
+}
+
+function metersToLatitudeDegrees(meters: number): number {
+  return meters / 110540
+}
+
+function pointInPolygonLonLat(
+  lon: number,
+  lat: number,
+  points: Array<{ longitude: number; latitude: number }>,
+): boolean {
+  let inside = false
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const xi = points[i]!.longitude
+    const yi = points[i]!.latitude
+    const xj = points[j]!.longitude
+    const yj = points[j]!.latitude
+    const intersect = yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+function addCy01ContainerStacks(
+  viewer: Viewer,
+  zoneEntityId: string,
+  points: Array<{ longitude: number; latitude: number; height: number }>,
+  track: (id: string) => void,
+) {
+  const minLon = Math.min(...points.map((p) => p.longitude))
+  const maxLon = Math.max(...points.map((p) => p.longitude))
+  const minLat = Math.min(...points.map((p) => p.latitude))
+  const maxLat = Math.max(...points.map((p) => p.latitude))
+  const center = calcZoneCenter(points)
+  const avgBaseHeight = points.reduce((acc, p) => acc + p.height, 0) / points.length
+  const footprint = points.map((p) => ({ longitude: p.longitude, latitude: p.latitude }))
+
+  const stepLon = metersToLongitudeDegrees(CY01_GRID_SPACING_M.x, center.latitude)
+  const stepLat = metersToLatitudeDegrees(CY01_GRID_SPACING_M.y)
+  const halfLon = metersToLongitudeDegrees(CY01_CONTAINER_DIM_M.length / 2, center.latitude)
+  const halfLat = metersToLatitudeDegrees(CY01_CONTAINER_DIM_M.width / 2)
+
+  let stackIndex = 0
+  let createdCount = 0
+  for (let lon = minLon + halfLon; lon <= maxLon - halfLon; lon += stepLon) {
+    for (let lat = minLat + halfLat; lat <= maxLat - halfLat; lat += stepLat) {
+      if (!pointInPolygonLonLat(lon, lat, footprint)) continue
+      for (let layer = 0; layer < CY01_STACK_LAYERS; layer += 1) {
+        if (createdCount >= CY01_MAX_CONTAINERS_TOTAL) return
+        const color = Color.fromCssColorString(
+          CY01_CONTAINER_COLORS[(stackIndex + layer) % CY01_CONTAINER_COLORS.length] ?? '#38bdf8',
+        ).withAlpha(0.92)
+        const z = avgBaseHeight + layer * CY01_CONTAINER_DIM_M.height + CY01_CONTAINER_DIM_M.height / 2
+        const eid = `${zoneEntityId}:container:${stackIndex}:${layer + 1}`
+        viewer.entities.add({
+          id: eid,
+          name: `CY-01 集装箱堆位 #${stackIndex + 1} L${layer + 1}`,
+          position: new ConstantPositionProperty(Cartesian3.fromDegrees(lon, lat, z)),
+          box: {
+            dimensions: new ConstantProperty(
+              new Cartesian3(
+                CY01_CONTAINER_DIM_M.length,
+                CY01_CONTAINER_DIM_M.width,
+                CY01_CONTAINER_DIM_M.height,
+              ),
+            ),
+            material: color,
+            outline: true,
+            outlineColor: Color.fromCssColorString('#082f49'),
+          },
+        })
+        track(eid)
+        createdCount += 1
+      }
+      stackIndex += 1
+    }
+  }
 }
 
 /**
@@ -121,6 +213,9 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
         ),
       })
       track(eid)
+      if ((ent.zoneCode ?? '').toUpperCase() === CY01_ZONE_CODE) {
+        addCy01ContainerStacks(viewer, eid, pts, track)
+      }
       continue
     }
 
@@ -284,6 +379,7 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
 
     const eid = basemapId(ent.id)
     const labelText = ent.labelText ?? ent.name
+    const shouldRunAnimations = ent.glbUri.includes('gantry_crane')
 
     viewer.entities.add({
       id: eid,
@@ -294,7 +390,7 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
         uri: new ConstantProperty(ent.glbUri),
         scale: new ConstantProperty(ent.scale),
         heightReference: heightRef,
-        runAnimations: false,
+        runAnimations: shouldRunAnimations,
       }),
       ...(labelText
         ? {

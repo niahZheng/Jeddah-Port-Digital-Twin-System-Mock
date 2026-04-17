@@ -237,7 +237,7 @@ export const INITIAL_BASEMAP_ROWS: BasemapSeedRow[] = [
       { longitude: 39.163865, latitude: 21.484874, height: 0 },
       { longitude: 39.164381, latitude: 21.484912, height: 0 },
     ]),
-    patrol_truck_count: 3,
+    patrol_truck_count: 1,
     patrol_segment_seconds: 2,
     patrol_stagger_seconds: 18,
     sort_order: 400,

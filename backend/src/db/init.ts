@@ -164,7 +164,22 @@ function seedIfEmpty(database: Database.Database) {
 
 function seedBasemapIfEmpty(database: Database.Database) {
   const row = database.prepare('SELECT COUNT(*) AS c FROM basemap_entities').get() as { c: number }
-  if (row.c > 0) return
+  // 如果数据库已有 basemap_entities，则不覆盖其它字段；但允许按需求修正特定设备数量（如集卡数量）
+  if (row.c > 0) {
+    const truckPatrol = INITIAL_BASEMAP_ROWS.find((r) => r.id === 'truck-patrol')
+    if (truckPatrol) {
+      database
+        .prepare(
+          'UPDATE basemap_entities SET patrol_truck_count = @patrol_truck_count, updated_at = @updated_at WHERE id = @id',
+        )
+        .run({
+          id: truckPatrol.id,
+          patrol_truck_count: truckPatrol.patrol_truck_count,
+          updated_at: new Date().toISOString(),
+        })
+    }
+    return
+  }
   const updatedAt = new Date().toISOString()
   const stmt = database.prepare(`
     INSERT INTO basemap_entities (

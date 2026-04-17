@@ -3,15 +3,22 @@ import { BasemapConfigModal } from '../basemap/BasemapConfigModal'
 import { ConfigFormSections } from '../widgets/ConfigFormSections'
 import {
   COORD_RECORDING_FINISHED_EVENT,
+  GANTRY_ANIM_STATE_EVENT,
   SET_DEFAULT_CAMERA_EVENT,
+  SET_MAX_CAMERA_VIEW_EVENT,
+  UNLOCK_MAX_CAMERA_VIEW_EVENT,
   START_COORD_RECORDING_EVENT,
   STOP_COORD_RECORDING_EVENT,
+  TOGGLE_GANTRY_ANIMATION_EVENT,
   type CoordRecordingFinishedDetail,
+  type GantryAnimStateDetail,
 } from '../../cesium/cameraEvents'
 
 export function BottomConsole() {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
+  const [isMaxViewLocked, setIsMaxViewLocked] = useState(false)
+  const [gantryAnimRunning, setGantryAnimRunning] = useState(true)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingNotice, setRecordingNotice] = useState('')
   const [basemapModalOpen, setBasemapModalOpen] = useState(false)
@@ -34,6 +41,20 @@ export function BottomConsole() {
     setIsRecording(true)
   }
 
+  const handleSetMaxCameraView = () => {
+    if (isMaxViewLocked) {
+      window.dispatchEvent(new Event(UNLOCK_MAX_CAMERA_VIEW_EVENT))
+      setIsMaxViewLocked(false)
+      return
+    }
+    window.dispatchEvent(new Event(SET_MAX_CAMERA_VIEW_EVENT))
+    setIsMaxViewLocked(true)
+  }
+
+  const handleToggleGantryAnimation = () => {
+    window.dispatchEvent(new Event(TOGGLE_GANTRY_ANIMATION_EVENT))
+  }
+
   useEffect(() => {
     const onFinished = (evt: Event) => {
       const detail = (evt as CustomEvent<CoordRecordingFinishedDetail>).detail
@@ -52,6 +73,16 @@ export function BottomConsole() {
     }
   }, [])
 
+  useEffect(() => {
+    const onGantryAnimState = (evt: Event) => {
+      const detail = (evt as CustomEvent<GantryAnimStateDetail>).detail
+      if (!detail) return
+      setGantryAnimRunning(detail.running)
+    }
+    window.addEventListener(GANTRY_ANIM_STATE_EVENT, onGantryAnimState)
+    return () => window.removeEventListener(GANTRY_ANIM_STATE_EVENT, onGantryAnimState)
+  }, [])
+
   return (
     <div className="bottom-console" role="region" aria-label="控制台">
       <div className="console-bar" role="tablist" aria-label="控制台标签">
@@ -67,6 +98,12 @@ export function BottomConsole() {
           </button>
           <button type="button" onClick={handleSaveCameraAsDefault}>
             {isSaved ? '已设为默认视角' : '设为默认视角'}
+          </button>
+          <button type="button" onClick={handleSetMaxCameraView}>
+            {isMaxViewLocked ? '解锁最大视角' : '设定最大视角'}
+          </button>
+          <button type="button" onClick={handleToggleGantryAnimation}>
+            {gantryAnimRunning ? '停止场桥动画' : '启动场桥动画'}
           </button>
           <button type="button" onClick={() => setBasemapModalOpen(true)}>
             底图配置
