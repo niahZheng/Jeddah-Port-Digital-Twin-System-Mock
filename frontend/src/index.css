@@ -1247,6 +1247,80 @@ body {
   inset: 0;
 }
 
+/* 集货区 CY-01 / CY-02 上方：在库 vs 可集散余量（饼圈 + 文案） */
+.yard-zone-cargo-tips {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.yard-zone-cargo-tip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  margin-top: -8px;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 10px 9px;
+  min-width: 96px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.38);
+}
+
+.yard-zone-cargo-tip__title {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #bae6fd;
+  text-transform: uppercase;
+  max-width: 11rem;
+  text-align: center;
+  line-height: 1.25;
+}
+
+.yard-zone-cargo-tip__chart {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  margin: 2px 0;
+}
+
+.yard-zone-cargo-tip__pie {
+  display: block;
+}
+
+.yard-zone-cargo-tip__pct {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -52%);
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+  pointer-events: none;
+}
+
+.yard-zone-cargo-tip__sub {
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.yard-zone-cargo-tip__sub--muted {
+  font-weight: 500;
+  color: #94a3b8;
+  font-size: 0.58rem;
+}
+
 /* 底图左上角指南针（随相机 heading 指示真北） */
 .cesium-compass {
   position: absolute;

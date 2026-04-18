@@ -656,6 +656,15 @@ export function BasemapConfigModal({ open, onClose }: Props) {
                   </div>
                 ) : (
                   <>
+                    {selected.glbUri?.includes('cargo ship 3d model') && (
+                      <p className="basemap-muted" style={{ margin: '0 0 0.75rem' }}>
+                        此条目是<strong>底图静态装饰船</strong>（Cesium 实体{' '}
+                        <code style={{ fontSize: '0.9em' }}>basemap:{selected.id}</code>
+）。场景中另有<strong>实时船舶</strong>（按 MMSI 从接口更新，使用{' '}
+                        <code style={{ fontSize: '0.9em' }}>cargo_ship_01/02</code> 等模型），两者互不影响。
+                        改坐标后请点<strong>保存</strong>（需登录）；若镜头里主要是带船名/航次标签的船，多半是实时船，本条目移动后它不会跟着动。
+                      </p>
+                    )}
                     <div className="basemap-field-grid">
                       <label>
                         经度

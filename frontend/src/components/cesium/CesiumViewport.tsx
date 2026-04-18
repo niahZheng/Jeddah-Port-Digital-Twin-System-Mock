@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Cartesian2,
   Cartesian3,
@@ -37,7 +37,7 @@ import {
 } from '../../cesium/shipModels'
 import {
   applyBasemapEntities,
-  BASEMAP_GANTRY_ENTITY_ID,
+  basemapCraneAnimationEntityIds,
   syncDynamicBasemapForShip,
 } from '../../cesium/basemapEntities'
 import {
@@ -66,6 +66,7 @@ import { useScreenStore } from '../../store/screenStore'
 import { useAuthStore } from '../../store/authStore'
 import { useBasemapStore } from '../../store/basemapStore'
 import type { PortStats, ShipData } from '../../types/port'
+import { YardZoneCargoTips } from './YardZoneCargoTips'
 
 /** 每条船上次用于三维的 Z 轴偏移；变化时 remove+add 实体，避免 Cesium Model 仍用旧 modelMatrix */
 const lastShipDraftByMmsi = new Map<string, number>()
@@ -94,6 +95,7 @@ export function CesiumViewport() {
   const containerRef = useRef<HTMLDivElement>(null)
   const compassDiskRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<Viewer | null>(null)
+  const [mapViewer, setMapViewer] = useState<Viewer | null>(null)
   const entitiesRef = useRef<Map<string, Entity>>(new Map())
   const hoveredEntityRef = useRef<Entity | null>(null)
   const hoveredRestoreRef = useRef<(() => void) | null>(null)
@@ -110,6 +112,8 @@ export function CesiumViewport() {
   const updateShip = useScreenStore((s) => s.updateShip)
   const setStats = useScreenStore((s) => s.setStats)
   const setWsConnected = useScreenStore((s) => s.setWsConnected)
+  const stats = useScreenStore((s) => s.stats)
+  const basemapEntities = useBasemapStore((s) => s.entities)
   const token = useAuthStore((s) => s.token)
 
   const applyCamera = (fn: (viewer: Viewer) => void) => {
@@ -133,6 +137,7 @@ export function CesiumViewport() {
     }
     if (!viewer) return
     viewerRef.current = viewer
+    setMapViewer(viewer)
     viewer.scene.globe.show = true
     // 关键：让地球/地形参与深度测试，地表会遮挡其下方模型（否则船体会“透地显示”）
     viewer.scene.globe.depthTestAgainstTerrain = true
@@ -230,15 +235,28 @@ export function CesiumViewport() {
     }
 
     const onToggleGantryAnimation = () => {
-      const entity = viewer.entities.getById(BASEMAP_GANTRY_ENTITY_ID)
-      if (!entity?.model) return
+      const ids = basemapCraneAnimationEntityIds(useBasemapStore.getState().entities)
+      if (ids.length === 0) return
       const now = JulianDate.now()
-      const prev = readModelRunAnimations(
-        entity.model.runAnimations as boolean | { getValue?: (t: JulianDate) => boolean | undefined },
-        now,
-      )
+      let prev = true
+      let found = false
+      for (const id of ids) {
+        const e = viewer.entities.getById(id)
+        if (!e?.model) continue
+        prev = readModelRunAnimations(
+          e.model.runAnimations as boolean | { getValue?: (t: JulianDate) => boolean | undefined },
+          now,
+        )
+        found = true
+        break
+      }
+      if (!found) return
       const next = !prev
-      entity.model.runAnimations = new ConstantProperty(next)
+      for (const id of ids) {
+        const e = viewer.entities.getById(id)
+        if (!e?.model) continue
+        e.model.runAnimations = new ConstantProperty(next)
+      }
       viewer.scene.requestRender()
       window.dispatchEvent(
         new CustomEvent<GantryAnimStateDetail>(GANTRY_ANIM_STATE_EVENT, {
@@ -419,6 +437,7 @@ export function CesiumViewport() {
       hoveredEntityRef.current = null
       lastShipDraftByMmsi.clear()
       entitiesRef.current.clear()
+      setMapViewer(null)
       if (!(viewer as any)?.isDestroyed?.()) viewer.destroy()
       viewerRef.current = null
     }
@@ -444,6 +463,11 @@ export function CesiumViewport() {
   return (
     <div className="cesium-viewport-shell">
       <div ref={containerRef} className="cesium-viewport" />
+      <YardZoneCargoTips
+        viewer={mapViewer}
+        basemapEntities={basemapEntities}
+        zones={stats?.yardZones}
+      />
       <div
         className="cesium-compass"
         role="img"

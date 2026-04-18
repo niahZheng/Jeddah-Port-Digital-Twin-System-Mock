@@ -32,12 +32,27 @@ const CY01_GRID_SPACING_M = { x: 13.5, y: 3.2 }
 const CY01_MAX_CONTAINERS_TOTAL = 900
 const CY01_CONTAINER_COLORS = ['#f97316', '#22c55e', '#38bdf8', '#eab308', '#a78bfa']
 
+/** 区域填充略高于配置高程，减轻与影像/地形同深度导致的闪烁（米） */
+const ZONE_POLYGON_Z_OFFSET_M = 3
+
 function basemapId(rowId: string, suffix = ''): string {
   return suffix ? `basemap:${rowId}:${suffix}` : `basemap:${rowId}`
 }
 
-/** 与 {@link basemapId} 一致，供外部（如控制台切换场桥动画）引用实体 id */
+/** 与 {@link basemapId} 一致，供外部引用场桥实体 id（历史兼容；动画开关见 {@link basemapCraneAnimationEntityIds}） */
 export const BASEMAP_GANTRY_ENTITY_ID = basemapId('gantry-01')
+
+/** 与场桥相同：含骨骼动画的 GLB 默认播放，并由底栏开关一并控制 */
+export function basemapGlbUsesSkeletalAnimations(glbUri: string | null | undefined): boolean {
+  if (!glbUri) return false
+  return glbUri.includes('gantry_crane') || glbUri.includes('crane_harbour')
+}
+
+export function basemapCraneAnimationEntityIds(entities: BasemapEntity[]): string[] {
+  return entities
+    .filter((e) => e.kind === 'model' && e.visible && basemapGlbUsesSkeletalAnimations(e.glbUri))
+    .map((e) => basemapId(e.id))
+}
 
 function calcZoneCenter(
   points: Array<{ longitude: number; latitude: number; height: number }>,
@@ -46,6 +61,21 @@ function calcZoneCenter(
   const longitude = points.reduce((acc, p) => acc + p.longitude, 0) / count
   const latitude = points.reduce((acc, p) => acc + p.latitude, 0) / count
   return { longitude, latitude }
+}
+
+/** 集货区 HTML 饼图 tips 锚点（与多边形抬高一致，并再上移一段） */
+const ZONE_TIP_EXTRA_HEIGHT_M = 14
+
+export function basemapZoneTipAnchorDegrees(
+  pts: Array<{ longitude: number; latitude: number; height: number }>,
+): { longitude: number; latitude: number; height: number } {
+  const c = calcZoneCenter(pts)
+  const avgH = pts.reduce((acc, p) => acc + p.height, 0) / pts.length
+  return {
+    longitude: c.longitude,
+    latitude: c.latitude,
+    height: avgH + ZONE_POLYGON_Z_OFFSET_M + ZONE_TIP_EXTRA_HEIGHT_M,
+  }
 }
 
 function resetViewerClock(viewer: Viewer) {
@@ -169,8 +199,11 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
       const pts = ent.zonePoints
       if (!pts || pts.length < 3) continue
       const positions: number[] = []
-      for (const p of pts) positions.push(p.longitude, p.latitude, p.height)
+      for (const p of pts) {
+        positions.push(p.longitude, p.latitude, p.height + ZONE_POLYGON_Z_OFFSET_M)
+      }
       const center = calcZoneCenter(pts)
+      const avgZoneH = pts.reduce((acc, p) => acc + p.height, 0) / pts.length
       const zoneLabel =
         ent.zoneCode && ent.name ? `${ent.zoneCode} ${ent.name}` : ent.name || ent.zoneCode || '区域'
       const fill = Color.fromCssColorString(ent.fillColor ?? '#22d3ee').withAlpha(0.24)
@@ -191,11 +224,12 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
             ...positions,
             pts[0]!.longitude,
             pts[0]!.latitude,
-            pts[0]!.height,
+            pts[0]!.height + ZONE_POLYGON_Z_OFFSET_M,
           ]),
           width: 2,
           material: Color.fromCssColorString('#67e8f9'),
-          clampToGround: true,
+          // 与多边形同高程，避免贴地轮廓与抬升的填充错位；略抬升可减少与地表 z-fighting
+          clampToGround: false,
         },
         label: {
           text: new ConstantProperty(zoneLabel),
@@ -209,7 +243,11 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         position: new ConstantPositionProperty(
-          Cartesian3.fromDegrees(center.longitude, center.latitude, 6),
+          Cartesian3.fromDegrees(
+            center.longitude,
+            center.latitude,
+            avgZoneH + ZONE_POLYGON_Z_OFFSET_M + 4,
+          ),
         ),
       })
       track(eid)
@@ -379,7 +417,7 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
 
     const eid = basemapId(ent.id)
     const labelText = ent.labelText ?? ent.name
-    const shouldRunAnimations = ent.glbUri.includes('gantry_crane')
+    const shouldRunAnimations = basemapGlbUsesSkeletalAnimations(ent.glbUri)
 
     viewer.entities.add({
       id: eid,

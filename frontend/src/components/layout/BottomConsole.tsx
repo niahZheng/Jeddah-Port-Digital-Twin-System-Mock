@@ -103,7 +103,7 @@ export function BottomConsole() {
             {isMaxViewLocked ? '解锁最大视角' : '设定最大视角'}
           </button>
           <button type="button" onClick={handleToggleGantryAnimation}>
-            {gantryAnimRunning ? '停止场桥动画' : '启动场桥动画'}
+            {gantryAnimRunning ? '停止场桥/岸桥动画' : '启动场桥/岸桥动画'}
           </button>
           <button type="button" onClick={() => setBasemapModalOpen(true)}>
             底图配置

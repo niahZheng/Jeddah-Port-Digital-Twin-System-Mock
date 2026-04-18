@@ -27,10 +27,19 @@ export interface ShipData {
   draftMeters?: number
 }
 
+/** 集货区在库 vs 能力（TEU），与底图 zoneCode 对齐 */
+export interface YardZoneCargoStat {
+  zoneCode: string
+  shortName: string
+  occupiedTeu: number
+  capacityTeu: number
+}
+
 export interface PortStats {
   shipsInPort: number
   throughputTeu: number
   berthUtilization: number
+  yardZones?: YardZoneCargoStat[]
   updatedAt: string
 }
 
