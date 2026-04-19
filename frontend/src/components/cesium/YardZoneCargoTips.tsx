@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { Cartesian2, Cartesian3 } from 'cesium'
+import { Cartesian2, Cartesian3, Cartographic } from 'cesium'
 import type { Viewer } from 'cesium'
 import { basemapZoneTipAnchorDegrees } from '../../cesium/basemapEntities'
 import type { BasemapEntity } from '../../types/basemap'
@@ -50,7 +50,13 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
         const el = tipElsRef.current.get(ent.id)
         if (!el) continue
         const anchor = basemapZoneTipAnchorDegrees(ent.zonePoints!)
-        const cart = Cartesian3.fromDegrees(anchor.longitude, anchor.latitude, anchor.height)
+        const carto = Cartographic.fromDegrees(anchor.longitude, anchor.latitude)
+        const groundH = viewer.scene.globe.getHeight(carto)
+        const tipH =
+          typeof groundH === 'number' && Number.isFinite(groundH)
+            ? groundH + 12
+            : anchor.height
+        const cart = Cartesian3.fromDegrees(anchor.longitude, anchor.latitude, tipH)
         const ok = viewer.scene.cartesianToCanvasCoordinates(cart, c2)
         if (!ok) {
           el.style.visibility = 'hidden'

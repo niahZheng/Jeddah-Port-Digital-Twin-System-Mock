@@ -13,6 +13,7 @@ import {
   LabelStyle,
   Math as CesiumMath,
   ModelGraphics,
+  PolygonHierarchy,
   Quaternion,
   SampledPositionProperty,
   Transforms,
@@ -34,6 +35,19 @@ const CY01_CONTAINER_COLORS = ['#f97316', '#22c55e', '#38bdf8', '#eab308', '#a78
 
 /** 区域填充略高于配置高程，减轻与影像/地形同深度导致的闪烁（米） */
 const ZONE_POLYGON_Z_OFFSET_M = 3
+
+/** 顶点近零走贴地逻辑时，色块相对地表再抬高（米），避免与地形/影像完全共面 */
+const ZONE_POLYGON_RELATIVE_ABOVE_GROUND_M = 4
+
+/** 顶点高程皆近 0 时走贴地多边形（World Terrain 下否则会被地形盖住） */
+const ZONE_CLAMP_HEIGHT_EPS_M = 0.5
+
+export function zonePolygonClampToGround(
+  pts: Array<{ height?: number | null }> | null | undefined,
+): boolean {
+  if (!pts || pts.length < 3) return false
+  return pts.every((p) => Math.abs(p.height ?? 0) < ZONE_CLAMP_HEIGHT_EPS_M)
+}
 
 function basemapId(rowId: string, suffix = ''): string {
   return suffix ? `basemap:${rowId}:${suffix}` : `basemap:${rowId}`
@@ -74,7 +88,11 @@ export function basemapZoneTipAnchorDegrees(
   return {
     longitude: c.longitude,
     latitude: c.latitude,
-    height: avgH + ZONE_POLYGON_Z_OFFSET_M + ZONE_TIP_EXTRA_HEIGHT_M,
+    height:
+      avgH +
+      ZONE_POLYGON_Z_OFFSET_M +
+      (zonePolygonClampToGround(pts) ? ZONE_POLYGON_RELATIVE_ABOVE_GROUND_M : 0) +
+      ZONE_TIP_EXTRA_HEIGHT_M,
   }
 }
 
@@ -120,6 +138,7 @@ function addCy01ContainerStacks(
   zoneEntityId: string,
   points: Array<{ longitude: number; latitude: number; height: number }>,
   track: (id: string) => void,
+  clampGroundZone: boolean,
 ) {
   const minLon = Math.min(...points.map((p) => p.longitude))
   const maxLon = Math.max(...points.map((p) => p.longitude))
@@ -144,7 +163,8 @@ function addCy01ContainerStacks(
         const color = Color.fromCssColorString(
           CY01_CONTAINER_COLORS[(stackIndex + layer) % CY01_CONTAINER_COLORS.length] ?? '#38bdf8',
         ).withAlpha(0.92)
-        const z = avgBaseHeight + layer * CY01_CONTAINER_DIM_M.height + CY01_CONTAINER_DIM_M.height / 2
+        const z =
+          avgBaseHeight + layer * CY01_CONTAINER_DIM_M.height + CY01_CONTAINER_DIM_M.height / 2
         const eid = `${zoneEntityId}:container:${stackIndex}:${layer + 1}`
         viewer.entities.add({
           id: eid,
@@ -161,6 +181,7 @@ function addCy01ContainerStacks(
             material: color,
             outline: true,
             outlineColor: Color.fromCssColorString('#082f49'),
+            ...(clampGroundZone ? { heightReference: HeightReference.RELATIVE_TO_GROUND } : {}),
           },
         })
         track(eid)
@@ -198,10 +219,6 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
     if (ent.kind === 'zone') {
       const pts = ent.zonePoints
       if (!pts || pts.length < 3) continue
-      const positions: number[] = []
-      for (const p of pts) {
-        positions.push(p.longitude, p.latitude, p.height + ZONE_POLYGON_Z_OFFSET_M)
-      }
       const center = calcZoneCenter(pts)
       const avgZoneH = pts.reduce((acc, p) => acc + p.height, 0) / pts.length
       const zoneLabel =
@@ -209,50 +226,101 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
       const fill = Color.fromCssColorString(ent.fillColor ?? '#22d3ee').withAlpha(0.24)
       const outline = Color.fromCssColorString(ent.outlineColor ?? '#38bdf8')
       const eid = basemapId(ent.id)
-      viewer.entities.add({
-        id: eid,
-        name: zoneLabel,
-        polygon: {
-          hierarchy: Cartesian3.fromDegreesArrayHeights(positions),
-          material: fill,
-          outline: true,
-          outlineColor: outline,
-          perPositionHeight: true,
-        },
-        polyline: {
-          positions: Cartesian3.fromDegreesArrayHeights([
-            ...positions,
-            pts[0]!.longitude,
-            pts[0]!.latitude,
-            pts[0]!.height + ZONE_POLYGON_Z_OFFSET_M,
-          ]),
-          width: 2,
-          material: Color.fromCssColorString('#67e8f9'),
-          // 与多边形同高程，避免贴地轮廓与抬升的填充错位；略抬升可减少与地表 z-fighting
-          clampToGround: false,
-        },
-        label: {
-          text: new ConstantProperty(zoneLabel),
-          font: '13px system-ui,sans-serif',
-          fillColor: Color.fromCssColorString('#7dd3fc'),
-          outlineColor: Color.BLACK,
-          outlineWidth: 2,
-          style: LabelStyle.FILL_AND_OUTLINE,
-          verticalOrigin: VerticalOrigin.BOTTOM,
-          pixelOffset: new Cartesian2(0, -10),
-          disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        },
-        position: new ConstantPositionProperty(
-          Cartesian3.fromDegrees(
-            center.longitude,
-            center.latitude,
-            avgZoneH + ZONE_POLYGON_Z_OFFSET_M + 4,
+      const clampGround = zonePolygonClampToGround(pts)
+
+      if (clampGround) {
+        const flat: number[] = []
+        for (const p of pts) {
+          flat.push(p.longitude, p.latitude)
+        }
+        const ring = Cartesian3.fromDegreesArray(flat)
+        viewer.entities.add({
+          id: eid,
+          name: zoneLabel,
+          polygon: {
+            hierarchy: new PolygonHierarchy(ring),
+            material: fill,
+            // 贴地多边形不支持轮廓线，否则会触发 Cesium oneTimeWarning 并关闭 draping
+            outline: false,
+            perPositionHeight: false,
+            height: ZONE_POLYGON_RELATIVE_ABOVE_GROUND_M,
+            heightReference: HeightReference.RELATIVE_TO_GROUND,
+          },
+          polyline: {
+            positions: Cartesian3.fromDegreesArray([...flat, flat[0]!, flat[1]!]),
+            width: 2,
+            material: Color.fromCssColorString('#67e8f9'),
+            clampToGround: true,
+          },
+          label: {
+            text: new ConstantProperty(zoneLabel),
+            font: '13px system-ui,sans-serif',
+            fillColor: Color.fromCssColorString('#7dd3fc'),
+            outlineColor: Color.BLACK,
+            outlineWidth: 2,
+            style: LabelStyle.FILL_AND_OUTLINE,
+            verticalOrigin: VerticalOrigin.BOTTOM,
+            pixelOffset: new Cartesian2(0, -10),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            heightReference: HeightReference.RELATIVE_TO_GROUND,
+          },
+          position: new ConstantPositionProperty(
+            Cartesian3.fromDegrees(
+              center.longitude,
+              center.latitude,
+              ZONE_POLYGON_RELATIVE_ABOVE_GROUND_M + 4,
+            ),
           ),
-        ),
-      })
+        })
+      } else {
+        const positions: number[] = []
+        for (const p of pts) {
+          positions.push(p.longitude, p.latitude, p.height + ZONE_POLYGON_Z_OFFSET_M)
+        }
+        viewer.entities.add({
+          id: eid,
+          name: zoneLabel,
+          polygon: {
+            hierarchy: Cartesian3.fromDegreesArrayHeights(positions),
+            material: fill,
+            outline: true,
+            outlineColor: outline,
+            perPositionHeight: true,
+          },
+          polyline: {
+            positions: Cartesian3.fromDegreesArrayHeights([
+              ...positions,
+              pts[0]!.longitude,
+              pts[0]!.latitude,
+              pts[0]!.height + ZONE_POLYGON_Z_OFFSET_M,
+            ]),
+            width: 2,
+            material: Color.fromCssColorString('#67e8f9'),
+            clampToGround: false,
+          },
+          label: {
+            text: new ConstantProperty(zoneLabel),
+            font: '13px system-ui,sans-serif',
+            fillColor: Color.fromCssColorString('#7dd3fc'),
+            outlineColor: Color.BLACK,
+            outlineWidth: 2,
+            style: LabelStyle.FILL_AND_OUTLINE,
+            verticalOrigin: VerticalOrigin.BOTTOM,
+            pixelOffset: new Cartesian2(0, -10),
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+          },
+          position: new ConstantPositionProperty(
+            Cartesian3.fromDegrees(
+              center.longitude,
+              center.latitude,
+              avgZoneH + ZONE_POLYGON_Z_OFFSET_M + 4,
+            ),
+          ),
+        })
+      }
       track(eid)
       if ((ent.zoneCode ?? '').toUpperCase() === CY01_ZONE_CODE) {
-        addCy01ContainerStacks(viewer, eid, pts, track)
+        addCy01ContainerStacks(viewer, eid, pts, track, clampGround)
       }
       continue
     }

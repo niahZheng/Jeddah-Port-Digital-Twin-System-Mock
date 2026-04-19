@@ -8,10 +8,13 @@ import {
   Math as CesiumMath,
   Matrix4,
   Terrain,
+  Transforms,
   UrlTemplateImageryProvider,
   Viewer,
   createOsmBuildingsAsync,
+  sampleTerrainMostDetailed,
 } from 'cesium'
+import type { Cesium3DTileset, Ellipsoid } from 'cesium'
 import type { TerrainMode } from '../types/terrain'
 
 /**
@@ -23,6 +26,157 @@ export const JEDDAH_LIGHTHOUSE = {
   latitude: 21.4687,
   /** 构图用参考高度（米），取塔高约131m 的中上段 */
   lookAtHeightMeters: 95,
+}
+
+/** OSM 3D 建筑相对地面的竖向拉伸倍数（ENU 竖轴） */
+const OSM_BUILDINGS_HEIGHT_SCALE = 3
+
+/** 半径大于此值视为全球级 tileset（如 Ion OSM Buildings），不能用 boundingSphere.center 做平移锚点 */
+const OSM_GLOBAL_TILESET_RADIUS_METERS = 1_000_000
+
+/** 刚性平移超过此值视为异常（例如误用地球尺度包围球中心），放弃平移只做局部竖向缩放 */
+const OSM_MAX_BUILDING_TRANSLATION_METERS = 50_000
+
+/** 在 (lon,lat,h) 处建立 ENU，沿当地竖轴缩放 heightScale 倍 */
+function enuHeightScaleMatrixAt(
+  ellipsoid: Ellipsoid,
+  longitudeRad: number,
+  latitudeRad: number,
+  refHeightMeters: number,
+  heightScale: number,
+  result: Matrix4,
+): Matrix4 {
+  if (heightScale === 1) {
+    return Matrix4.clone(Matrix4.IDENTITY, result)
+  }
+  const ref = Cartesian3.fromRadians(
+    longitudeRad,
+    latitudeRad,
+    refHeightMeters,
+    ellipsoid,
+    new Cartesian3(),
+  )
+  const enuToFixed = Transforms.eastNorthUpToFixedFrame(ref)
+  const fixedToEnu = Matrix4.inverse(enuToFixed, new Matrix4())
+  const scaleEnu = Matrix4.fromScale(
+    new Cartesian3(1, 1, heightScale),
+    new Matrix4(),
+  )
+  const enuScaled = Matrix4.multiply(enuToFixed, scaleEnu, new Matrix4())
+  return Matrix4.multiply(enuScaled, fixedToEnu, result)
+}
+
+async function waitForGlobeHeight(
+  viewer: Viewer,
+  longitudeRad: number,
+  latitudeRad: number,
+  maxFrames: number,
+): Promise<number | undefined> {
+  const c = Cartographic.fromRadians(longitudeRad, latitudeRad, 0)
+  for (let i = 0; i < maxFrames; i++) {
+    const h = viewer.scene.globe.getHeight(c)
+    if (typeof h === 'number' && Number.isFinite(h)) return h
+    viewer.scene.requestRender?.()
+    await new Promise<void>((r) => requestAnimationFrame(() => r()))
+  }
+  return undefined
+}
+
+/**
+ * 将 OSM 建筑与当前场景中的地形/地表对齐，再施加竖向拉伸。
+ * 须先把 tileset 加入 primitives，以便 sampleHeightMostDetailed 可排除建筑射线拾取地形。
+ */
+function whenTilesetInitialGeometryReady(tileset: Cesium3DTileset): Promise<void> {
+  return new Promise((resolve) => {
+    if (tileset.tilesLoaded) {
+      resolve()
+      return
+    }
+    const remove = tileset.initialTilesLoaded.addEventListener(() => {
+      remove()
+      resolve()
+    })
+  })
+}
+
+async function alignOsmBuildingsToTerrainThenScale(
+  viewer: Viewer,
+  tileset: Cesium3DTileset,
+  heightScale: number,
+) {
+  await whenTilesetInitialGeometryReady(tileset)
+  const ellipsoid = viewer.scene.globe.ellipsoid
+  const bs = tileset.boundingSphere
+  /** Ion OSM Buildings 等全球数据：包围球极大，center 不是港区地面点，平移会把整层模型移没 */
+  const treatAsGlobal = bs.radius > OSM_GLOBAL_TILESET_RADIUS_METERS
+
+  let lo: number
+  let la: number
+  let centerH: number | undefined
+
+  if (treatAsGlobal) {
+    lo = CesiumMath.toRadians(JEDDAH_LIGHTHOUSE.longitude)
+    la = CesiumMath.toRadians(JEDDAH_LIGHTHOUSE.latitude)
+    centerH = undefined
+  } else {
+    const centerCarto = Cartographic.fromCartesian(bs.center, ellipsoid, new Cartographic())
+    lo = centerCarto.longitude
+    la = centerCarto.latitude
+    centerH = centerCarto.height
+    if (!Number.isFinite(centerH)) return
+  }
+
+  let hTerrain: number | undefined
+
+  if (viewer.scene.sampleHeightSupported) {
+    const positions = [Cartographic.fromRadians(lo, la, 0, new Cartographic())]
+    try {
+      await viewer.scene.sampleHeightMostDetailed(positions, [tileset])
+      const h = positions[0]?.height
+      if (typeof h === 'number' && Number.isFinite(h)) hTerrain = h
+    } catch {
+      /* 地形瓦片未就绪等 */
+    }
+  }
+
+  if (hTerrain === undefined) {
+    hTerrain = await waitForGlobeHeight(viewer, lo, la, 120)
+  }
+
+  if (hTerrain === undefined) {
+    try {
+      const positions = [Cartographic.fromRadians(lo, la, 0, new Cartographic())]
+      await sampleTerrainMostDetailed(viewer.scene.globe.terrainProvider, positions)
+      const h = positions[0]?.height
+      if (typeof h === 'number' && Number.isFinite(h)) hTerrain = h
+    } catch {
+      /* 椭球地形等 */
+    }
+  }
+
+  const refH = typeof hTerrain === 'number' && Number.isFinite(hTerrain) ? hTerrain : 0
+  const scaleM = enuHeightScaleMatrixAt(ellipsoid, lo, la, refH, heightScale, new Matrix4())
+
+  if (treatAsGlobal || centerH === undefined) {
+    tileset.modelMatrix = heightScale === 1 ? Matrix4.clone(Matrix4.IDENTITY, new Matrix4()) : scaleM
+    return
+  }
+
+  const atCenter = Cartesian3.fromRadians(lo, la, centerH, ellipsoid, new Cartesian3())
+  const atTerrain = Cartesian3.fromRadians(lo, la, refH, ellipsoid, new Cartesian3())
+  const translation = Cartesian3.subtract(atTerrain, atCenter, new Cartesian3())
+  const transLen = Cartesian3.magnitude(translation)
+  if (transLen > OSM_MAX_BUILDING_TRANSLATION_METERS) {
+    tileset.modelMatrix = heightScale === 1 ? Matrix4.clone(Matrix4.IDENTITY, new Matrix4()) : scaleM
+    return
+  }
+
+  const transM = Matrix4.fromTranslation(translation, new Matrix4())
+  if (heightScale === 1) {
+    tileset.modelMatrix = transM
+  } else {
+    tileset.modelMatrix = Matrix4.multiply(scaleM, transM, new Matrix4())
+  }
 }
 
 /** 斜视灯塔：相对目标的方位角、俯仰角（-45°）、距离（米） */
@@ -149,10 +303,11 @@ export function applyOsmStreetBasemap(viewer: Viewer): void {
 }
 
 /** 启用 Cesium 地理3D模型（建筑物等） */
-export async function applyCesiumGeographicModel(viewer: Viewer): Promise<any> {
+export async function applyCesiumGeographicModel(viewer: Viewer): Promise<Cesium3DTileset> {
   // 加载Cesium Ion的3D建筑物图层（更详细的3D模型）
   const osmBuildings = await createOsmBuildingsAsync()
   viewer.scene.primitives.add(osmBuildings)
+  await alignOsmBuildingsToTerrainThenScale(viewer, osmBuildings, OSM_BUILDINGS_HEIGHT_SCALE)
 
   // 确保底图仍然是街道图
   if (viewer.imageryLayers.length === 0) {

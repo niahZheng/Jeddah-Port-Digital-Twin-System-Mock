@@ -82,15 +82,6 @@ function readModelRunAnimations(
   return v !== undefined ? Boolean(v) : defaultVal
 }
 
-const CAMERA_ROT_STEP = CesiumMath.toRadians(5)
-const CAMERA_PITCH_STEP = CesiumMath.toRadians(4)
-
-function cameraPanStepMeters(viewer: Viewer): number {
-  const c = Cartographic.fromCartesian(viewer.camera.positionWC)
-  const h = c?.height ?? 1000
-  return Math.min(80_000, Math.max(120, h * 0.035))
-}
-
 export function CesiumViewport() {
   const containerRef = useRef<HTMLDivElement>(null)
   const compassDiskRef = useRef<HTMLDivElement>(null)
@@ -116,13 +107,6 @@ export function CesiumViewport() {
   const basemapEntities = useBasemapStore((s) => s.entities)
   const token = useAuthStore((s) => s.token)
 
-  const applyCamera = (fn: (viewer: Viewer) => void) => {
-    const v = viewerRef.current
-    if (!v || (v as any)?.isDestroyed?.()) return
-    fn(v)
-    v.scene.requestRender()
-  }
-
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
@@ -130,7 +114,8 @@ export function CesiumViewport() {
     configureIonFromEnv()
     let viewer: Viewer | null = null
     try {
-      viewer = createViewer(el, 'ellipsoid')
+      // OSM 3D 建筑按全球地形/高程数据落位；椭球地形无起伏时影像贴在椭球上，楼体会整体高于“底图”
+      viewer = createViewer(el, 'world')
     } catch (err) {
       console.error('Failed to initialize Cesium (WebGL context).', err)
       return
@@ -479,104 +464,6 @@ export function CesiumViewport() {
           <span className="cesium-compass-cardinal cesium-compass-cardinal--e">E</span>
           <span className="cesium-compass-cardinal cesium-compass-cardinal--s">S</span>
           <span className="cesium-compass-cardinal cesium-compass-cardinal--w">W</span>
-        </div>
-      </div>
-      <div
-        className="cesium-camera-controls"
-        role="toolbar"
-        aria-label="地图相机：旋转、俯仰、平移"
-        onPointerDown={(e) => e.stopPropagation()}
-      >
-        <div className="cesium-camera-controls__group">
-          <span className="cesium-camera-controls__label">旋转</span>
-          <div className="cesium-camera-controls__row">
-            <button
-              type="button"
-              className="cesium-camera-controls__btn"
-              title="绕视点向左旋转（逆时针）"
-              aria-label="向左旋转地图"
-              onClick={() => applyCamera((v) => v.camera.rotateLeft(CAMERA_ROT_STEP))}
-            >
-              ↺
-            </button>
-            <button
-              type="button"
-              className="cesium-camera-controls__btn"
-              title="绕视点向右旋转（顺时针）"
-              aria-label="向右旋转地图"
-              onClick={() => applyCamera((v) => v.camera.rotateRight(CAMERA_ROT_STEP))}
-            >
-              ↻
-            </button>
-          </div>
-        </div>
-        <div className="cesium-camera-controls__group">
-          <span className="cesium-camera-controls__label">升降</span>
-          <div className="cesium-camera-controls__row">
-            <button
-              type="button"
-              className="cesium-camera-controls__btn"
-              title="抬头（减小俯角，视角升高）"
-              aria-label="抬头"
-              onClick={() => applyCamera((v) => v.camera.rotateUp(CAMERA_PITCH_STEP))}
-            >
-              ∧
-            </button>
-            <button
-              type="button"
-              className="cesium-camera-controls__btn"
-              title="低头（增大俯角，视角降低）"
-              aria-label="低头"
-              onClick={() => applyCamera((v) => v.camera.rotateDown(CAMERA_PITCH_STEP))}
-            >
-              ∨
-            </button>
-          </div>
-        </div>
-        <div className="cesium-camera-controls__group">
-          <span className="cesium-camera-controls__label">平移</span>
-          <div className="cesium-camera-controls__pad">
-            <button
-              type="button"
-              className="cesium-camera-controls__btn cesium-camera-controls__btn--pad-up"
-              title="沿视线方向前移"
-              aria-label="前移"
-              onClick={() =>
-                applyCamera((v) => v.camera.moveForward(cameraPanStepMeters(v)))
-              }
-            >
-              ↑
-            </button>
-            <button
-              type="button"
-              className="cesium-camera-controls__btn cesium-camera-controls__btn--pad-left"
-              title="左移"
-              aria-label="左移"
-              onClick={() => applyCamera((v) => v.camera.moveLeft(cameraPanStepMeters(v)))}
-            >
-              ←
-            </button>
-            <button
-              type="button"
-              className="cesium-camera-controls__btn cesium-camera-controls__btn--pad-right"
-              title="右移"
-              aria-label="右移"
-              onClick={() => applyCamera((v) => v.camera.moveRight(cameraPanStepMeters(v)))}
-            >
-              →
-            </button>
-            <button
-              type="button"
-              className="cesium-camera-controls__btn cesium-camera-controls__btn--pad-down"
-              title="沿视线方向后移"
-              aria-label="后移"
-              onClick={() =>
-                applyCamera((v) => v.camera.moveBackward(cameraPanStepMeters(v)))
-              }
-            >
-              ↓
-            </button>
-          </div>
         </div>
       </div>
     </div>
