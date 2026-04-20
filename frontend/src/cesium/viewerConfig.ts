@@ -37,6 +37,44 @@ const OSM_GLOBAL_TILESET_RADIUS_METERS = 1_000_000
 /** 刚性平移超过此值视为异常（例如误用地球尺度包围球中心），放弃平移只做局部竖向缩放 */
 const OSM_MAX_BUILDING_TRANSLATION_METERS = 50_000
 
+/** OSM 全球建筑相对地表常整体偏高；沿当地「向地心」方向微移以贴紧地面（米）。可用 VITE_OSM_BUILDINGS_SINK_M 覆盖（环境变量优先于本常量） */
+const OSM_BUILDINGS_SINK_DEFAULT_M = 10
+
+function parseOsmBuildingsSinkMeters(): number {
+  const raw = import.meta.env.VITE_OSM_BUILDINGS_SINK_M
+  if (raw !== undefined && String(raw).trim() !== '') {
+    const n = Number(raw)
+    return Number.isFinite(n) ? Math.max(0, n) : 0
+  }
+  return OSM_BUILDINGS_SINK_DEFAULT_M
+}
+
+/** 在锚点处沿椭球法线向地心平移 sinkMeters，再左乘到 base（ECEF 固定系） */
+function sinkTilesetMatrixTowardGeocenter(
+  ellipsoid: Ellipsoid,
+  longitudeRad: number,
+  latitudeRad: number,
+  refHeightMeters: number,
+  sinkMeters: number,
+  base: Matrix4,
+  result: Matrix4,
+): Matrix4 {
+  if (sinkMeters === 0) {
+    return Matrix4.clone(base, result)
+  }
+  const anchor = Cartesian3.fromRadians(
+    longitudeRad,
+    latitudeRad,
+    refHeightMeters,
+    ellipsoid,
+    new Cartesian3(),
+  )
+  const up = Cartesian3.normalize(anchor, new Cartesian3())
+  const delta = Cartesian3.multiplyByScalar(up, -sinkMeters, new Cartesian3())
+  const sink = Matrix4.fromTranslation(delta, new Matrix4())
+  return Matrix4.multiply(sink, base, result)
+}
+
 /** 在 (lon,lat,h) 处建立 ENU，沿当地竖轴缩放 heightScale 倍 */
 function enuHeightScaleMatrixAt(
   ellipsoid: Ellipsoid,
@@ -156,9 +194,20 @@ async function alignOsmBuildingsToTerrainThenScale(
 
   const refH = typeof hTerrain === 'number' && Number.isFinite(hTerrain) ? hTerrain : 0
   const scaleM = enuHeightScaleMatrixAt(ellipsoid, lo, la, refH, heightScale, new Matrix4())
+  const sinkM = parseOsmBuildingsSinkMeters()
 
+  let base: Matrix4
   if (treatAsGlobal || centerH === undefined) {
-    tileset.modelMatrix = heightScale === 1 ? Matrix4.clone(Matrix4.IDENTITY, new Matrix4()) : scaleM
+    base = heightScale === 1 ? Matrix4.clone(Matrix4.IDENTITY, new Matrix4()) : scaleM
+    tileset.modelMatrix = sinkTilesetMatrixTowardGeocenter(
+      ellipsoid,
+      lo,
+      la,
+      refH,
+      sinkM,
+      base,
+      new Matrix4(),
+    )
     return
   }
 
@@ -167,16 +216,34 @@ async function alignOsmBuildingsToTerrainThenScale(
   const translation = Cartesian3.subtract(atTerrain, atCenter, new Cartesian3())
   const transLen = Cartesian3.magnitude(translation)
   if (transLen > OSM_MAX_BUILDING_TRANSLATION_METERS) {
-    tileset.modelMatrix = heightScale === 1 ? Matrix4.clone(Matrix4.IDENTITY, new Matrix4()) : scaleM
+    base = heightScale === 1 ? Matrix4.clone(Matrix4.IDENTITY, new Matrix4()) : scaleM
+    tileset.modelMatrix = sinkTilesetMatrixTowardGeocenter(
+      ellipsoid,
+      lo,
+      la,
+      refH,
+      sinkM,
+      base,
+      new Matrix4(),
+    )
     return
   }
 
   const transM = Matrix4.fromTranslation(translation, new Matrix4())
   if (heightScale === 1) {
-    tileset.modelMatrix = transM
+    base = transM
   } else {
-    tileset.modelMatrix = Matrix4.multiply(scaleM, transM, new Matrix4())
+    base = Matrix4.multiply(scaleM, transM, new Matrix4())
   }
+  tileset.modelMatrix = sinkTilesetMatrixTowardGeocenter(
+    ellipsoid,
+    lo,
+    la,
+    refH,
+    sinkM,
+    base,
+    new Matrix4(),
+  )
 }
 
 /** 斜视灯塔：相对目标的方位角、俯仰角（-45°）、距离（米） */
@@ -206,9 +273,11 @@ export function configureIonFromEnv() {
   if (token) Ion.defaultAccessToken = token
 }
 
-/** 地形：world 依赖 Cesium Ion；网络/Ion 异常时可设 VITE_TERRAIN_MODE=ellipsoid */
+/**
+ * 地形：默认椭球（无起伏）；需要全球高程时设环境变量 VITE_TERRAIN_MODE=world（依赖 Ion）。
+ */
 export function terrainModeFromEnv(): TerrainMode {
-  return import.meta.env.VITE_TERRAIN_MODE === 'ellipsoid' ? 'ellipsoid' : 'world'
+  return import.meta.env.VITE_TERRAIN_MODE === 'world' ? 'world' : 'ellipsoid'
 }
 
 /**
@@ -344,4 +413,12 @@ export async function applyCesiumGeographicModel(viewer: Viewer): Promise<Cesium
   viewer.scene.globe.baseColor = Color.fromCssColorString('#1a3a52')
 
   return osmBuildings
+}
+
+/** 已加载的 OSM tileset 按当前下沉/缩放常量重新计算 modelMatrix（供开发 HMR 或运行时调试） */
+export async function realignOsmBuildingsTileset(
+  viewer: Viewer,
+  tileset: Cesium3DTileset,
+): Promise<void> {
+  await alignOsmBuildingsToTerrainThenScale(viewer, tileset, OSM_BUILDINGS_HEIGHT_SCALE)
 }

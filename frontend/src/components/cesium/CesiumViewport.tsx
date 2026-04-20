@@ -20,6 +20,7 @@ import {
   Math as CesiumMath,
   VerticalOrigin,
 } from 'cesium'
+import type { Cesium3DTileset } from 'cesium'
 import {
   fetchBasemapEntities,
   fetchCameraView,
@@ -72,6 +73,26 @@ import { YardZoneCargoTips } from './YardZoneCargoTips'
 /** 每条船上次用于三维的 Z 轴偏移；变化时 remove+add 实体，避免 Cesium Model 仍用旧 modelMatrix */
 const lastShipDraftByMmsi = new Map<string, number>()
 
+/** 供 Vite HMR：修改 viewerConfig 下沉等常量后，对已加载的 OSM tileset 重新对齐（useEffect([]) 不会自动重跑） */
+const cesiumOsmHotRefs: { viewer: Viewer | null; tileset: Cesium3DTileset | null } = {
+  viewer: null,
+  tileset: null,
+}
+
+if (import.meta.hot) {
+  import.meta.hot.accept('../../cesium/viewerConfig', async (mod) => {
+    const v = cesiumOsmHotRefs.viewer
+    const ts = cesiumOsmHotRefs.tileset
+    if (!mod || !v || !ts || (v as any)?.isDestroyed?.()) return
+    try {
+      await mod.realignOsmBuildingsTileset(v, ts)
+      v.scene.requestRender?.()
+    } catch (e) {
+      console.warn('[HMR] OSM buildings realign failed:', e)
+    }
+  })
+}
+
 function readModelRunAnimations(
   prop: boolean | { getValue?: (t: JulianDate) => boolean | undefined } | undefined,
   time: JulianDate,
@@ -115,7 +136,7 @@ export function CesiumViewport() {
     configureIonFromEnv()
     let viewer: Viewer | null = null
     try {
-      // world：Cesium World Terrain（Ion）；ellipsoid：无 Ion 高程，见 VITE_TERRAIN_MODE
+      // 默认椭球无起伏；VITE_TERRAIN_MODE=world 时使用 Ion 全球地形
       viewer = createViewer(el, terrainModeFromEnv())
     } catch (err) {
       console.error('Failed to initialize Cesium (WebGL context).', err)
@@ -123,6 +144,7 @@ export function CesiumViewport() {
     }
     if (!viewer) return
     viewerRef.current = viewer
+    cesiumOsmHotRefs.viewer = viewer
     setMapViewer(viewer)
     viewer.scene.globe.show = true
     // 关键：让地球/地形参与深度测试，地表会遮挡其下方模型（否则船体会“透地显示”）
@@ -424,6 +446,8 @@ export function CesiumViewport() {
       lastShipDraftByMmsi.clear()
       entitiesRef.current.clear()
       setMapViewer(null)
+      cesiumOsmHotRefs.viewer = null
+      cesiumOsmHotRefs.tileset = null
       if (!(viewer as any)?.isDestroyed?.()) viewer.destroy()
       viewerRef.current = null
     }
@@ -438,6 +462,7 @@ export function CesiumViewport() {
         await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
         if (viewerRef.current !== viewer || (viewer as any)?.isDestroyed?.()) return
         osmBuildingsRef.current = await applyCesiumGeographicModel(viewer)
+        cesiumOsmHotRefs.tileset = osmBuildingsRef.current
         if (viewerRef.current !== viewer || (viewer as any)?.isDestroyed?.()) return
         viewer.scene.globe.baseColor = Color.fromCssColorString('#1a3a52')
       } catch (error) {

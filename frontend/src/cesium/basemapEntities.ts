@@ -13,6 +13,7 @@ import {
   LabelStyle,
   Math as CesiumMath,
   ModelGraphics,
+  NearFarScalar,
   PolygonHierarchy,
   Quaternion,
   SampledPositionProperty,
@@ -32,6 +33,11 @@ const CY01_STACK_LAYERS = 2
 const CY01_GRID_SPACING_M = { x: 13.5, y: 3.2 }
 const CY01_MAX_CONTAINERS_TOTAL = 900
 const CY01_CONTAINER_COLORS = ['#f97316', '#22c55e', '#38bdf8', '#eab308', '#a78bfa']
+
+/** 区域名称标签：屏幕像素字号，不随与相机距离缩放 */
+const ZONE_LABEL_SCALE_BY_DISTANCE = new ConstantProperty(
+  new NearFarScalar(1.0, 1.0, 1.0e15, 1.0),
+)
 
 /** 区域填充略高于配置高程，减轻与影像/地形同深度导致的闪烁（米） */
 const ZONE_POLYGON_Z_OFFSET_M = 3
@@ -261,6 +267,7 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
             style: LabelStyle.FILL_AND_OUTLINE,
             verticalOrigin: VerticalOrigin.BOTTOM,
             pixelOffset: new Cartesian2(0, -10),
+            scaleByDistance: ZONE_LABEL_SCALE_BY_DISTANCE,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
             heightReference: HeightReference.RELATIVE_TO_GROUND,
           },
@@ -307,6 +314,7 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
             style: LabelStyle.FILL_AND_OUTLINE,
             verticalOrigin: VerticalOrigin.BOTTOM,
             pixelOffset: new Cartesian2(0, -10),
+            scaleByDistance: ZONE_LABEL_SCALE_BY_DISTANCE,
             disableDepthTestDistance: Number.POSITIVE_INFINITY,
           },
           position: new ConstantPositionProperty(

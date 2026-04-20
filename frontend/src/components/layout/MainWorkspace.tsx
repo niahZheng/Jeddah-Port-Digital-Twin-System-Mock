@@ -8,6 +8,7 @@ import { OpsEngineerOverviewWidgets } from '../ops-engineer/overview/OpsEngineer
 import { OpsEngineerWorkspace } from '../ops-engineer/OpsEngineerWorkspace'
 import { CesiumViewport } from '../cesium/CesiumViewport'
 import { BottomConsole } from './BottomConsole'
+import { OverviewRightSettingsRail } from './OverviewRightSettingsRail'
 import { LeftPanel, RightPanel } from '../widgets/StatsPanel'
 
 type Props = {
@@ -31,11 +32,13 @@ export function MainWorkspace(props: Props) {
     if (isFreightHome) {
       return (
         <div className="screen-body">
-          <div className="screen-main screen-main--map-only">
-            <div className="stage stage--floating-widgets">
+          <div className="screen-main screen-main--map-with-right-rail">
+            <div className="stage">
               <CesiumViewport />
-              <FreightDispatcherOverviewWidgets />
             </div>
+            <OverviewRightSettingsRail
+              overviewDrawers={<FreightDispatcherOverviewWidgets />}
+            />
           </div>
           <BottomConsole />
         </div>
@@ -53,11 +56,13 @@ export function MainWorkspace(props: Props) {
     if (isPassengerHome) {
       return (
         <div className="screen-body">
-          <div className="screen-main screen-main--map-only">
-            <div className="stage stage--floating-widgets">
+          <div className="screen-main screen-main--map-with-right-rail">
+            <div className="stage">
               <CesiumViewport />
-              <PassengerDispatcherOverviewWidgets />
             </div>
+            <OverviewRightSettingsRail
+              overviewDrawers={<PassengerDispatcherOverviewWidgets />}
+            />
           </div>
           <BottomConsole />
         </div>
@@ -75,11 +80,11 @@ export function MainWorkspace(props: Props) {
     if (isOpsHome) {
       return (
         <div className="screen-body">
-          <div className="screen-main screen-main--map-only">
-            <div className="stage stage--floating-widgets">
+          <div className="screen-main screen-main--map-with-right-rail">
+            <div className="stage">
               <CesiumViewport />
-              <OpsEngineerOverviewWidgets />
             </div>
+            <OverviewRightSettingsRail overviewDrawers={<OpsEngineerOverviewWidgets />} />
           </div>
           <BottomConsole />
         </div>
@@ -97,11 +102,11 @@ export function MainWorkspace(props: Props) {
     if (isDirectorHome) {
       return (
         <div className="screen-body">
-          <div className="screen-main screen-main--map-only">
-            <div className="stage stage--floating-widgets">
+          <div className="screen-main screen-main--map-with-right-rail">
+            <div className="stage">
               <CesiumViewport />
-              <DirectorOverviewWidgets />
             </div>
+            <OverviewRightSettingsRail overviewDrawers={<DirectorOverviewWidgets />} />
           </div>
           <BottomConsole />
         </div>

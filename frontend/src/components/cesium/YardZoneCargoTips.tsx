@@ -46,6 +46,9 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
 
     const onPostRender = () => {
       const c2 = scratch.current
+      const canvas = viewer.scene.canvas
+      const sx = canvas.clientWidth / Math.max(1, canvas.width)
+      const sy = canvas.clientHeight / Math.max(1, canvas.height)
       for (const ent of targets) {
         const el = tipElsRef.current.get(ent.id)
         if (!el) continue
@@ -63,8 +66,9 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
           continue
         }
         el.style.visibility = 'visible'
-        el.style.left = `${c2.x}px`
-        el.style.top = `${c2.y}px`
+        /* 绘制缓冲区坐标 → CSS 像素，与相机距离无关；tip 尺寸用 px 固定屏幕大小 */
+        el.style.left = `${c2.x * sx}px`
+        el.style.top = `${c2.y * sy}px`
       }
     }
 

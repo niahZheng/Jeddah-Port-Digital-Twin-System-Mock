@@ -1,6 +1,5 @@
-import { useRef } from 'react'
 import { KpiCard } from '../DirectorPrimitives'
-import { DraggableWidget } from './DraggableWidget'
+import { OverviewDrawerSection } from '../../layout/OverviewDrawerSection'
 import { useDirectorOverviewData } from './useDirectorOverviewData'
 
 function formatTime(iso: string) {
@@ -12,7 +11,6 @@ function formatTime(iso: string) {
 }
 
 export function DirectorOverviewWidgets() {
-  const layerRef = useRef<HTMLDivElement>(null)
   const pageKey = 'director_home'
   const {
     data,
@@ -30,37 +28,17 @@ export function DirectorOverviewWidgets() {
 
   if (err) {
     return (
-      <div className="overview-widgets-layer" ref={layerRef}>
-        <DraggableWidget
-          pageKey={pageKey}
-          id="overview-error"
-          title="数据提示"
-          containerRef={layerRef}
-          defaultLeft={16}
-          defaultTop={16}
-          width={360}
-        >
-          <p className="overview-widget__muted">{err}</p>
-        </DraggableWidget>
-      </div>
+      <OverviewDrawerSection pageKey={pageKey} id="overview-error" title="数据提示" defaultOpen>
+        <p className="overview-widget__muted">{err}</p>
+      </OverviewDrawerSection>
     )
   }
 
   if (!data) {
     return (
-      <div className="overview-widgets-layer" ref={layerRef}>
-        <DraggableWidget
-          pageKey={pageKey}
-          id="overview-loading"
-          title="港口业务全景"
-          containerRef={layerRef}
-          defaultLeft={16}
-          defaultTop={16}
-          width={280}
-        >
-          <p className="overview-widget__muted">加载中…</p>
-        </DraggableWidget>
-      </div>
+      <OverviewDrawerSection pageKey={pageKey} id="overview-loading" title="港口业务全景" defaultOpen>
+        <p className="overview-widget__muted">加载中…</p>
+      </OverviewDrawerSection>
     )
   }
 
@@ -77,15 +55,12 @@ export function DirectorOverviewWidgets() {
   )
 
   return (
-    <div className="overview-widgets-layer" ref={layerRef}>
-      <DraggableWidget
+    <>
+      <OverviewDrawerSection
         pageKey={pageKey}
         id="kpi"
         title="核心 KPI"
-        containerRef={layerRef}
-        defaultLeft={16}
-        defaultTop={16}
-        width={380}
+        defaultOpen
         aside={
           <>
             {wsPill}
@@ -116,17 +91,9 @@ export function DirectorOverviewWidgets() {
           />
         </div>
         <p className="overview-widget__foot">数据日期 {data.date}</p>
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
-        pageKey={pageKey}
-        id="digest"
-        title="船舶到离港摘要"
-        containerRef={layerRef}
-        defaultLeft={16}
-        defaultTop={280}
-        width={300}
-      >
+      <OverviewDrawerSection pageKey={pageKey} id="digest" title="船舶到离港摘要" defaultOpen>
         <ul className="overview-widget-digest">
           <li>
             今日到港 <strong>{data.shipPlanDigest.arrivedToday}</strong> 艘次
@@ -141,20 +108,17 @@ export function DirectorOverviewWidgets() {
             准点率 <strong>{(data.shipPlanDigest.onTimeRate * 100).toFixed(0)}%</strong>
           </li>
         </ul>
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
+      <OverviewDrawerSection
         pageKey={pageKey}
         id="trend"
         title="分时趋势（示意）"
-        containerRef={layerRef}
-        defaultLeft={420}
-        defaultTop={16}
-        width={400}
+        defaultOpen={false}
         aside={<span className="overview-widget__meta">REST 基线</span>}
       >
         {trend ? (
-          <div className="overview-widget-trend">
+          <div className="overview-widget-trend overview-widget-trend--rail">
             <div className="overview-widget-trend-block">
               <h4>货运 TEU</h4>
               <div className="overview-widget-bars">
@@ -187,17 +151,9 @@ export function DirectorOverviewWidgets() {
             </div>
           </div>
         ) : null}
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
-        pageKey={pageKey}
-        id="alerts"
-        title="预警速览"
-        containerRef={layerRef}
-        defaultLeft={420}
-        defaultTop={300}
-        width={360}
-      >
+      <OverviewDrawerSection pageKey={pageKey} id="alerts" title="预警速览" defaultOpen={false}>
         <ul className="overview-widget-alerts">
           {data.topAlertsPreview.map((a) => (
             <li key={a.id} className={`level-${a.level}`}>
@@ -206,7 +162,7 @@ export function DirectorOverviewWidgets() {
             </li>
           ))}
         </ul>
-      </DraggableWidget>
-    </div>
+      </OverviewDrawerSection>
+    </>
   )
 }

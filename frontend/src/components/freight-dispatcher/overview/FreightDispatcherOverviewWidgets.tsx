@@ -1,5 +1,4 @@
-import { useRef } from 'react'
-import { DraggableWidget } from '../../director/overview/DraggableWidget'
+import { OverviewDrawerSection } from '../../layout/OverviewDrawerSection'
 import { useFreightDispatcherOverviewData } from './useFreightDispatcherOverviewData'
 
 function formatTime(iso: string) {
@@ -17,43 +16,22 @@ function formatWeight(t: number) {
 }
 
 export function FreightDispatcherOverviewWidgets() {
-  const layerRef = useRef<HTMLDivElement>(null)
   const pageKey = 'freight_dispatcher_home'
   const { data, err } = useFreightDispatcherOverviewData()
 
   if (err) {
     return (
-      <div className="overview-widgets-layer" ref={layerRef}>
-        <DraggableWidget
-          pageKey={pageKey}
-          id="fd-overview-error"
-          title="数据提示"
-          containerRef={layerRef}
-          defaultLeft={16}
-          defaultTop={16}
-          width={360}
-        >
-          <p className="overview-widget__muted">{err}</p>
-        </DraggableWidget>
-      </div>
+      <OverviewDrawerSection pageKey={pageKey} id="fd-overview-error" title="数据提示" defaultOpen>
+        <p className="overview-widget__muted">{err}</p>
+      </OverviewDrawerSection>
     )
   }
 
   if (!data) {
     return (
-      <div className="overview-widgets-layer" ref={layerRef}>
-        <DraggableWidget
-          pageKey={pageKey}
-          id="fd-overview-loading"
-          title="货运业务准备"
-          containerRef={layerRef}
-          defaultLeft={16}
-          defaultTop={16}
-          width={280}
-        >
-          <p className="overview-widget__muted">加载中…</p>
-        </DraggableWidget>
-      </div>
+      <OverviewDrawerSection pageKey={pageKey} id="fd-overview-loading" title="货运业务准备" defaultOpen>
+        <p className="overview-widget__muted">加载中…</p>
+      </OverviewDrawerSection>
     )
   }
 
@@ -70,15 +48,12 @@ export function FreightDispatcherOverviewWidgets() {
   const goals = data.dailyGoals ?? { objectives: [], targets: [] }
 
   return (
-    <div className="overview-widgets-layer" ref={layerRef}>
-      <DraggableWidget
+    <>
+      <OverviewDrawerSection
         pageKey={pageKey}
         id="fd-ship-plan"
         title="船舶到港 / 离港计划"
-        containerRef={layerRef}
-        defaultLeft={16}
-        defaultTop={16}
-        width={540}
+        defaultOpen
         aside={
           <>
             {meta}
@@ -86,7 +61,7 @@ export function FreightDispatcherOverviewWidgets() {
           </>
         }
       >
-        <div className="fd-prep-scroll">
+        <div className="fd-prep-scroll fd-prep-scroll--rail">
           <table className="fd-prep-table">
             <thead>
               <tr>
@@ -114,19 +89,16 @@ export function FreightDispatcherOverviewWidgets() {
             </tbody>
           </table>
         </div>
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
+      <OverviewDrawerSection
         pageKey={pageKey}
         id="fd-manifest"
         title="货物运输清单"
-        containerRef={layerRef}
-        defaultLeft={580}
-        defaultTop={16}
-        width={560}
+        defaultOpen={false}
         aside={<span className="overview-widget__meta">品名 · 重量 · 目的港 · 货主</span>}
       >
-        <div className="fd-prep-scroll">
+        <div className="fd-prep-scroll fd-prep-scroll--rail">
           <table className="fd-prep-table">
             <thead>
               <tr>
@@ -154,18 +126,10 @@ export function FreightDispatcherOverviewWidgets() {
             </tbody>
           </table>
         </div>
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
-        pageKey={pageKey}
-        id="fd-yard-plan"
-        title="堆场分配计划"
-        containerRef={layerRef}
-        defaultLeft={16}
-        defaultTop={280}
-        width={540}
-      >
-        <div className="fd-prep-scroll">
+      <OverviewDrawerSection pageKey={pageKey} id="fd-yard-plan" title="堆场分配计划" defaultOpen={false}>
+        <div className="fd-prep-scroll fd-prep-scroll--rail">
           <table className="fd-prep-table">
             <thead>
               <tr>
@@ -189,18 +153,10 @@ export function FreightDispatcherOverviewWidgets() {
             </tbody>
           </table>
         </div>
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
-        pageKey={pageKey}
-        id="fd-vehicle-plan"
-        title="车辆转运计划"
-        containerRef={layerRef}
-        defaultLeft={580}
-        defaultTop={280}
-        width={560}
-      >
-        <div className="fd-prep-scroll">
+      <OverviewDrawerSection pageKey={pageKey} id="fd-vehicle-plan" title="车辆转运计划" defaultOpen={false}>
+        <div className="fd-prep-scroll fd-prep-scroll--rail">
           <table className="fd-prep-table">
             <thead>
               <tr>
@@ -224,17 +180,9 @@ export function FreightDispatcherOverviewWidgets() {
             </tbody>
           </table>
         </div>
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
-        pageKey={pageKey}
-        id="fd-goals"
-        title="当日业务重点与目标"
-        containerRef={layerRef}
-        defaultLeft={16}
-        defaultTop={520}
-        width={1124}
-      >
+      <OverviewDrawerSection pageKey={pageKey} id="fd-goals" title="当日业务重点与目标" defaultOpen={false}>
         <div className="overview-widget-digest-group">
           <h4 className="overview-widget-digest-h">调度重点</h4>
           <ul className="overview-widget-digest">
@@ -268,7 +216,7 @@ export function FreightDispatcherOverviewWidgets() {
             ))}
           </ul>
         </div>
-      </DraggableWidget>
-    </div>
+      </OverviewDrawerSection>
+    </>
   )
 }

@@ -1,5 +1,4 @@
-import { useRef } from 'react'
-import { DraggableWidget } from '../../director/overview/DraggableWidget'
+import { OverviewDrawerSection } from '../../layout/OverviewDrawerSection'
 
 const planRows = [
   '货运设备：岸桥 12 台、场桥 18 台、转运车辆 96 台（重点巡检液压与制动）',
@@ -14,40 +13,23 @@ const focusRows = [
 ]
 
 export function OpsEngineerOverviewWidgets() {
-  const layerRef = useRef<HTMLDivElement>(null)
   const pageKey = 'ops_engineer_home'
   return (
-    <div className="overview-widgets-layer" ref={layerRef}>
-      <DraggableWidget
-        pageKey={pageKey}
-        id="oe-home-plan"
-        title="当日设备运维计划"
-        containerRef={layerRef}
-        defaultLeft={16}
-        defaultTop={16}
-        width={560}
-      >
+    <>
+      <OverviewDrawerSection pageKey={pageKey} id="oe-home-plan" title="当日设备运维计划" defaultOpen>
         <ul className="overview-widget-digest">
           {planRows.map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
-      </DraggableWidget>
-      <DraggableWidget
-        pageKey={pageKey}
-        id="oe-home-focus"
-        title="维护与故障重点"
-        containerRef={layerRef}
-        defaultLeft={592}
-        defaultTop={16}
-        width={560}
-      >
+      </OverviewDrawerSection>
+      <OverviewDrawerSection pageKey={pageKey} id="oe-home-focus" title="维护与故障重点" defaultOpen>
         <ul className="overview-widget-digest">
           {focusRows.map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
-      </DraggableWidget>
-    </div>
+      </OverviewDrawerSection>
+    </>
   )
 }

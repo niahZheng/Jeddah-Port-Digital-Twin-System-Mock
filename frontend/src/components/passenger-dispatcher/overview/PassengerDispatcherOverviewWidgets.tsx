@@ -1,5 +1,4 @@
-import { useRef } from 'react'
-import { DraggableWidget } from '../../director/overview/DraggableWidget'
+import { OverviewDrawerSection } from '../../layout/OverviewDrawerSection'
 
 const planDigest = [
   '客轮到发重点：13:40 吉达-亚喀巴、17:20 吉达-塞法杰',
@@ -14,41 +13,24 @@ const serviceDigest = [
 ]
 
 export function PassengerDispatcherOverviewWidgets() {
-  const layerRef = useRef<HTMLDivElement>(null)
   const pageKey = 'passenger_dispatcher_home'
   return (
-    <div className="overview-widgets-layer" ref={layerRef}>
-      <DraggableWidget
-        pageKey={pageKey}
-        id="pd-home-plan"
-        title="当日客运业务计划"
-        containerRef={layerRef}
-        defaultLeft={16}
-        defaultTop={16}
-        width={520}
-      >
+    <>
+      <OverviewDrawerSection pageKey={pageKey} id="pd-home-plan" title="当日客运业务计划" defaultOpen>
         <ul className="overview-widget-digest">
           {planDigest.map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
-      </DraggableWidget>
+      </OverviewDrawerSection>
 
-      <DraggableWidget
-        pageKey={pageKey}
-        id="pd-home-service"
-        title="客运服务与保障"
-        containerRef={layerRef}
-        defaultLeft={552}
-        defaultTop={16}
-        width={520}
-      >
+      <OverviewDrawerSection pageKey={pageKey} id="pd-home-service" title="客运服务与保障" defaultOpen>
         <ul className="overview-widget-digest">
           {serviceDigest.map((t) => (
             <li key={t}>{t}</li>
           ))}
         </ul>
-      </DraggableWidget>
-    </div>
+      </OverviewDrawerSection>
+    </>
   )
 }
