@@ -35,11 +35,19 @@ export interface YardZoneCargoStat {
   capacityTeu: number
 }
 
+export type QuayCraneStatus = 'idle' | 'busy' | 'alert'
+
+export interface QuayCraneStat {
+  craneCode: string
+  status: QuayCraneStatus
+}
+
 export interface PortStats {
   shipsInPort: number
   throughputTeu: number
   berthUtilization: number
   yardZones?: YardZoneCargoStat[]
+  quayCranes?: QuayCraneStat[]
   updatedAt: string
 }
 

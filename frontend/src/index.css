@@ -1513,6 +1513,96 @@ body {
   letter-spacing: -0.02em;
 }
 
+/* 岸桥 QC 上方：斜向引线 + 状态气泡 */
+.quay-crane-status-tips {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.quay-crane-status-tip {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+.quay-crane-status-tip__anchor {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  border: 1px solid rgba(56, 189, 248, 0.7);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.66);
+}
+
+.quay-crane-status-tip__leader {
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  width: 40px;
+  height: 2px;
+  border-radius: 999px;
+  transform-origin: left center;
+  transform: rotate(-30deg);
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.95), rgba(56, 189, 248, 0.52));
+}
+
+.quay-crane-status-tip__bubble {
+  position: absolute;
+  left: 38px;
+  top: -40px;
+  min-width: 76px;
+  padding: 5px 9px 6px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+}
+
+.quay-crane-status-tip__title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #bae6fd;
+  letter-spacing: 0.04em;
+}
+
+.quay-crane-status-tip__status {
+  font-size: 11px;
+  font-weight: 700;
+  color: #e2e8f0;
+  white-space: nowrap;
+}
+
+.quay-crane-status-tip--busy .quay-crane-status-tip__bubble {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.quay-crane-status-tip--idle .quay-crane-status-tip__bubble {
+  border-color: rgba(148, 163, 184, 0.45);
+}
+
+.quay-crane-status-tip--alert .quay-crane-status-tip__bubble {
+  border-color: rgba(239, 68, 68, 0.68);
+  box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.15), 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.quay-crane-status-tip__alert {
+  color: #ef4444;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+}
+
 /* 底图左上角指南针（随相机 heading 指示真北） */
 .cesium-compass {
   position: absolute;

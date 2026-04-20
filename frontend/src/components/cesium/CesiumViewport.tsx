@@ -68,6 +68,7 @@ import { useScreenStore } from '../../store/screenStore'
 import { useAuthStore } from '../../store/authStore'
 import { useBasemapStore } from '../../store/basemapStore'
 import type { PortStats, ShipData } from '../../types/port'
+import { QuayCraneStatusTips } from './QuayCraneStatusTips'
 import { YardZoneCargoTips } from './YardZoneCargoTips'
 
 /** 每条船上次用于三维的 Z 轴偏移；变化时 remove+add 实体，避免 Cesium Model 仍用旧 modelMatrix */
@@ -471,6 +472,27 @@ export function CesiumViewport() {
     })()
   }, [])
 
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    const statusByCode = new Map(
+      (stats?.quayCranes ?? []).map((x) => [x.craneCode.trim().toUpperCase(), x.status] as const),
+    )
+    for (const cfg of basemapEntities) {
+      if (cfg.kind !== 'model' || !cfg.visible) continue
+      if (!cfg.glbUri?.includes('crane_harbour')) continue
+      const code =
+        (cfg.labelText ?? '').trim().toUpperCase() ||
+        cfg.name.toUpperCase().match(/QC-\d{2}/)?.[0] ||
+        ''
+      const status = statusByCode.get(code) ?? 'idle'
+      const model = viewer.entities.getById(`basemap:${cfg.id}`)?.model
+      if (!model) continue
+      model.runAnimations = new ConstantProperty(status === 'busy')
+    }
+    viewer.scene.requestRender()
+  }, [basemapEntities, stats?.quayCranes])
+
   return (
     <div className="cesium-viewport-shell">
       <div ref={containerRef} className="cesium-viewport" />
@@ -478,6 +500,11 @@ export function CesiumViewport() {
         viewer={mapViewer}
         basemapEntities={basemapEntities}
         zones={stats?.yardZones}
+      />
+      <QuayCraneStatusTips
+        viewer={mapViewer}
+        basemapEntities={basemapEntities}
+        cranes={stats?.quayCranes}
       />
       <div
         className="cesium-compass"
