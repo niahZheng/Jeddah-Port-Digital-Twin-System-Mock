@@ -82,6 +82,13 @@ function emptyZonePointsJson() {
   )
 }
 
+function defaultPolylinePathPoints(): NonNullable<BasemapEntity['pathPoints']> {
+  return [
+    { longitude: 39.155, latitude: 21.476, height: 0 },
+    { longitude: 39.155, latitude: 21.478, height: 0 },
+  ]
+}
+
 export function BasemapConfigModal({ open, onClose }: Props) {
   const token = useAuthStore((s) => s.token)
   const setStoreEntities = useBasemapStore((s) => s.setEntities)
@@ -235,8 +242,32 @@ export function BasemapConfigModal({ open, onClose }: Props) {
       prev.map((x) => {
         if (x.id !== selectedId) return x
         const next = { ...x, ...patch }
-        if (patch.kind === 'zone' && (!next.zonePoints || next.zonePoints.length < 3)) {
-          next.zonePoints = JSON.parse(emptyZonePointsJson()) as BasemapEntity['zonePoints']
+        if (patch.kind === 'zone') {
+          if (!next.zonePoints || next.zonePoints.length < 3) {
+            next.zonePoints = JSON.parse(emptyZonePointsJson()) as BasemapEntity['zonePoints']
+          }
+          next.pathPoints = null
+          next.glbUri = null
+          next.patrolTruckCount = null
+          next.patrolSegmentSeconds = null
+          next.patrolStaggerSeconds = null
+        }
+        if (patch.kind === 'polyline') {
+          if (!next.pathPoints || next.pathPoints.length < 2) {
+            next.pathPoints = defaultPolylinePathPoints()
+          }
+          next.glbUri = null
+          next.zonePoints = null
+          next.patrolTruckCount = null
+          next.patrolSegmentSeconds = null
+          next.patrolStaggerSeconds = null
+          next.trackMmsi = null
+          next.rotationMode = 'fixed'
+          if (!next.scale || next.scale === 1) next.scale = 5
+        }
+        if (patch.kind === 'model') {
+          next.zonePoints = null
+          if (!next.glbUri) next.glbUri = '/models/crane_harbour.glb'
         }
         return next
       }),
@@ -328,6 +359,49 @@ export function BasemapConfigModal({ open, onClose }: Props) {
         fillColor: '#22d3ee',
         outlineColor: '#38bdf8',
         sortOrder: 50,
+      })
+      const list = await fetchBasemapEntities()
+      setItems(list)
+      setStoreEntities(list)
+      setSelectedId(created.id)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '新增失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleAddPolyline = async () => {
+    if (!token) {
+      setError('请先登录后再新增条目')
+      return
+    }
+    setError(null)
+    setLoading(true)
+    try {
+      const created = await createBasemapEntity(token, {
+        kind: 'polyline',
+        name: '新道路折线',
+        visible: true,
+        glbUri: null,
+        longitude: null,
+        latitude: null,
+        height: null,
+        scale: 5,
+        headingDeg: 0,
+        rotationMode: 'fixed',
+        trackMmsi: null,
+        heightRef: 'clamp',
+        labelText: null,
+        zoneCode: null,
+        zonePoints: null,
+        fillColor: null,
+        outlineColor: '#94a3b8',
+        pathPoints: defaultPolylinePathPoints(),
+        patrolTruckCount: null,
+        patrolSegmentSeconds: null,
+        patrolStaggerSeconds: null,
+        sortOrder: 60,
       })
       const list = await fetchBasemapEntities()
       setItems(list)
@@ -532,6 +606,9 @@ export function BasemapConfigModal({ open, onClose }: Props) {
               <button type="button" onClick={() => void handleAddZone()} disabled={loading}>
                 新增区域
               </button>
+              <button type="button" onClick={() => void handleAddPolyline()} disabled={loading}>
+                新增折线
+              </button>
             </div>
             <ul className="basemap-modal-list">
               {items.map((row) => (
@@ -541,7 +618,9 @@ export function BasemapConfigModal({ open, onClose }: Props) {
                     className={row.id === selectedId ? 'active' : ''}
                     onClick={() => setSelectedId(row.id)}
                   >
-                    <span className="basemap-list-kind">{row.kind === 'zone' ? '区' : '模'}</span>
+                    <span className="basemap-list-kind">
+                      {row.kind === 'zone' ? '区' : row.kind === 'polyline' ? '线' : '模'}
+                    </span>
                     <span className="basemap-list-name">{row.name}</span>
                     {!row.visible && <span className="basemap-list-hidden">隐</span>}
                   </button>
@@ -593,6 +672,7 @@ export function BasemapConfigModal({ open, onClose }: Props) {
                     >
                       <option value="model">模型</option>
                       <option value="zone">装卸区 / 多边形区域</option>
+                      <option value="polyline">道路 / 折线</option>
                     </select>
                   </label>
                   <label>
@@ -651,6 +731,58 @@ export function BasemapConfigModal({ open, onClose }: Props) {
                       <input
                         value={selected.outlineColor ?? ''}
                         onChange={(e) => patchSelected({ outlineColor: e.target.value || null })}
+                      />
+                    </label>
+                  </div>
+                ) : selected.kind === 'polyline' ? (
+                  <div className="basemap-field-grid">
+                    <p className="basemap-muted basemap-field-full" style={{ margin: 0 }}>
+                      折线使用与巡逻相同的经纬度顶点序列（pathPoints），至少 2 点；线宽为下方「线宽」像素；线色为「线条色」。
+                    </p>
+                    <label>
+                      关联区域代码（可空，仅备注）
+                      <input
+                        value={selected.zoneCode ?? ''}
+                        onChange={(e) => patchSelected({ zoneCode: e.target.value || null })}
+                      />
+                    </label>
+                    <label>
+                      线宽（像素，对应 scale）
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={selected.scale}
+                        onChange={(e) => patchSelected({ scale: Math.max(1, Number(e.target.value)) })}
+                      />
+                    </label>
+                    <label>
+                      线条色
+                      <input
+                        value={selected.outlineColor ?? ''}
+                        onChange={(e) => patchSelected({ outlineColor: e.target.value || null })}
+                      />
+                    </label>
+                    <label>
+                      贴地模式
+                      <select
+                        value={selected.heightRef}
+                        onChange={(e) =>
+                          patchSelected({ heightRef: e.target.value as BasemapEntity['heightRef'] })
+                        }
+                      >
+                        <option value="clamp">贴地（顶点 height≈0 时推荐）</option>
+                        <option value="none">按顶点绝对高度</option>
+                      </select>
+                    </label>
+                    <label className="basemap-field-full">
+                      pathPoints JSON（longitude, latitude, height）
+                      <textarea
+                        rows={8}
+                        value={pathPointsToText(selected.pathPoints)}
+                        onChange={(e) =>
+                          patchSelected({ pathPoints: parsePointsJson(e.target.value) })
+                        }
                       />
                     </label>
                   </div>

@@ -6,8 +6,6 @@ import type { BasemapEntity } from '../../types/basemap'
 import type { YardZoneCargoStat } from '../../types/port'
 
 const TRACKED_ZONE_CODES = new Set(['cy-01', 'cy-02'])
-const DONUT_R = 18
-const DONUT_C = 2 * Math.PI * DONUT_R
 
 type Props = {
   viewer: Viewer | null
@@ -89,8 +87,6 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
         const cap = Math.max(0, st?.capacityTeu ?? 0)
         const avail = Math.max(0, cap - occupied)
         const pct = cap > 0 ? Math.min(100, Math.round((occupied / cap) * 100)) : 0
-        const frac = cap > 0 ? Math.min(1, occupied / cap) : 0
-        const dash = frac * DONUT_C
 
         const tip = st
           ? `${st.shortName}：在库 ${occupied} TEU，可集散余量 ${avail} TEU（规划能力 ${cap} TEU）`
@@ -105,34 +101,11 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
             className="yard-zone-cargo-tip"
             title={tip}
           >
-            <div className="yard-zone-cargo-tip__title">{st?.shortName ?? code}</div>
-            <div className="yard-zone-cargo-tip__chart">
-              <svg className="yard-zone-cargo-tip__pie" width="52" height="52" viewBox="0 0 52 52">
-                <circle
-                  cx="26"
-                  cy="26"
-                  r={DONUT_R}
-                  fill="none"
-                  stroke="rgba(51,65,85,0.95)"
-                  strokeWidth="9"
-                />
-                <circle
-                  cx="26"
-                  cy="26"
-                  r={DONUT_R}
-                  fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="9"
-                  strokeLinecap="round"
-                  strokeDasharray={`${dash} ${DONUT_C}`}
-                  transform="rotate(-90 26 26)"
-                />
-              </svg>
-              <span className="yard-zone-cargo-tip__pct">{pct}%</span>
-            </div>
-            <div className="yard-zone-cargo-tip__sub">在库 {occupied} TEU</div>
-            <div className="yard-zone-cargo-tip__sub yard-zone-cargo-tip__sub--muted">
-              可集散余量 {cap > 0 ? avail : '—'} TEU
+            <span className="yard-zone-cargo-tip__anchor" />
+            <span className="yard-zone-cargo-tip__leader" />
+            <div className="yard-zone-cargo-tip__bubble">
+              <div className="yard-zone-cargo-tip__title">{st?.shortName ?? code}</div>
+              <div className="yard-zone-cargo-tip__pct">{pct}%</div>
             </div>
           </div>
         )

@@ -1,4 +1,4 @@
-export type BasemapEntityKind = 'model' | 'zone'
+export type BasemapEntityKind = 'model' | 'zone' | 'polyline'
 
 export type BasemapRotationMode = 'fixed' | 'dynamic_track'
 

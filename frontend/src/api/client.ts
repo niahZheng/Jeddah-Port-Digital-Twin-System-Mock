@@ -333,7 +333,8 @@ export async function deleteBasemapEntity(token: string, id: string): Promise<vo
 }
 
 function parseBasemapEntity(s: Record<string, unknown>): BasemapEntity {
-  const kind = s.kind === 'zone' ? 'zone' : 'model'
+  const kind: BasemapEntity['kind'] =
+    s.kind === 'zone' ? 'zone' : s.kind === 'polyline' ? 'polyline' : 'model'
   const rotationMode = s.rotationMode === 'dynamic_track' ? 'dynamic_track' : 'fixed'
   const heightRef = s.heightRef === 'none' ? 'none' : 'clamp'
   return {

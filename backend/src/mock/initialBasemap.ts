@@ -1,9 +1,15 @@
 /**
  * 首次建库时写入的底图实体默认数据（与前端原硬编码一致，可在「底图配置」中改库）。
  */
+export type BasemapLonLatHeight = {
+  longitude: number
+  latitude: number
+  height: number
+}
+
 export type BasemapSeedRow = {
   id: string
-  kind: 'model' | 'zone'
+  kind: 'model' | 'zone' | 'polyline'
   name: string
   visible: number
   glb_uri: string | null
@@ -27,11 +33,19 @@ export type BasemapSeedRow = {
   sort_order: number
 }
 
+/** CY-01 多边形顶点（与 zone-cy01 一致），供集货区南北向通道等衍生几何使用 */
+export const CY01_ZONE_POINTS: BasemapLonLatHeight[] = [
+  { longitude: 39.154829, latitude: 21.475567, height: 0 },
+  { longitude: 39.157364, latitude: 21.476065, height: 0 },
+  { longitude: 39.156772, latitude: 21.478599, height: 0 },
+  { longitude: 39.154298, latitude: 21.478191, height: 0 },
+]
+
 export const INITIAL_BASEMAP_ROWS: BasemapSeedRow[] = [
   {
     id: 'zone-cy01',
     kind: 'zone',
-    name: '东侧集货区',
+    name: 'CY-01集货区',
     visible: 1,
     glb_uri: null,
     longitude: null,
@@ -44,12 +58,7 @@ export const INITIAL_BASEMAP_ROWS: BasemapSeedRow[] = [
     height_ref: 'clamp',
     label_text: null,
     zone_code: 'CY-01',
-    zone_points_json: JSON.stringify([
-      { longitude: 39.154829, latitude: 21.475567, height: 0 },
-      { longitude: 39.157364, latitude: 21.476065, height: 0 },
-      { longitude: 39.156772, latitude: 21.478599, height: 0 },
-      { longitude: 39.154298, latitude: 21.478191, height: 0 },
-    ]),
+    zone_points_json: JSON.stringify(CY01_ZONE_POINTS),
     fill_color: '#22d3ee',
     outline_color: '#38bdf8',
     path_points_json: null,
@@ -61,7 +70,7 @@ export const INITIAL_BASEMAP_ROWS: BasemapSeedRow[] = [
   {
     id: 'zone-cy02',
     kind: 'zone',
-    name: '北侧集货区',
+    name: 'CY-02集货区',
     visible: 1,
     glb_uri: null,
     longitude: null,

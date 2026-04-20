@@ -28,6 +28,7 @@ import { shipDraftMeters } from './shipModels'
 
 let lastManagedBasemapIds: string[] = []
 const CY01_ZONE_CODE = 'CY-01'
+const CY01_CONTAINER_STACKS_ENABLED = false
 const CY01_CONTAINER_DIM_M = { length: 12.2, width: 2.6, height: 2.9 }
 const CY01_STACK_LAYERS = 2
 const CY01_GRID_SPACING_M = { x: 13.5, y: 3.2 }
@@ -327,9 +328,51 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
         })
       }
       track(eid)
-      if ((ent.zoneCode ?? '').toUpperCase() === CY01_ZONE_CODE) {
+      if (CY01_CONTAINER_STACKS_ENABLED && (ent.zoneCode ?? '').toUpperCase() === CY01_ZONE_CODE) {
         addCy01ContainerStacks(viewer, eid, pts, track, clampGround)
       }
+      continue
+    }
+
+    if (ent.kind === 'polyline') {
+      const pts = ent.pathPoints
+      if (!pts || pts.length < 2) continue
+      const clampGround = ent.heightRef !== 'none' && zonePolygonClampToGround(pts)
+      const lineColor = Color.fromCssColorString(ent.outlineColor ?? '#64748b').withAlpha(0.95)
+      const w = Math.max(1, Number(ent.scale) || 4)
+      const eid = basemapId(ent.id)
+      if (clampGround) {
+        const flat: number[] = []
+        for (const p of pts) {
+          flat.push(p.longitude, p.latitude)
+        }
+        viewer.entities.add({
+          id: eid,
+          name: ent.name,
+          polyline: {
+            positions: Cartesian3.fromDegreesArray(flat),
+            width: w,
+            material: lineColor,
+            clampToGround: true,
+          },
+        })
+      } else {
+        const arr: number[] = []
+        for (const p of pts) {
+          arr.push(p.longitude, p.latitude, p.height + ZONE_POLYGON_Z_OFFSET_M)
+        }
+        viewer.entities.add({
+          id: eid,
+          name: ent.name,
+          polyline: {
+            positions: Cartesian3.fromDegreesArrayHeights(arr),
+            width: w,
+            material: lineColor,
+            clampToGround: false,
+          },
+        })
+      }
+      track(eid)
       continue
     }
 

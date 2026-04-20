@@ -6,7 +6,7 @@ import { getShips, getShipSeedDefaultDraftMeters } from '../mock/ships.js'
 
 export type BasemapEntityDto = {
   id: string
-  kind: 'model' | 'zone'
+  kind: 'model' | 'zone' | 'polyline'
   name: string
   visible: boolean
   glbUri: string | null
@@ -210,9 +210,11 @@ function getUserIdOr401(req: Request, res: Response): number | null {
 }
 
 function rowToDto(row: DbRow): BasemapEntityDto {
+  const kind: BasemapEntityDto['kind'] =
+    row.kind === 'zone' ? 'zone' : row.kind === 'polyline' ? 'polyline' : 'model'
   return {
     id: row.id,
-    kind: row.kind === 'zone' ? 'zone' : 'model',
+    kind,
     name: row.name,
     visible: row.visible === 1,
     glbUri: row.glb_uri,
@@ -261,7 +263,7 @@ function parseJsonPoints(json: string | null): BasemapEntityDto['zonePoints'] {
 
 type NormalizedRow = {
   id: string
-  kind: 'model' | 'zone'
+  kind: 'model' | 'zone' | 'polyline'
   name: string
   visible: number
   glb_uri: string | null
@@ -297,8 +299,15 @@ function normalizeInput(
   if (!id && opts.generateId) id = randomUUID()
 
   const kindRaw = b.kind
-  const kind = kindRaw === 'zone' ? 'zone' : kindRaw === 'model' ? 'model' : ''
-  if (!kind) return { ok: false, error: 'kind 须为 model 或 zone' }
+  const kind =
+    kindRaw === 'zone'
+      ? 'zone'
+      : kindRaw === 'polyline'
+        ? 'polyline'
+        : kindRaw === 'model'
+          ? 'model'
+          : ''
+  if (!kind) return { ok: false, error: 'kind 须为 model、zone 或 polyline' }
 
   const name = typeof b.name === 'string' ? b.name.trim() : ''
   if (!name) return { ok: false, error: '缺少名称 name' }
@@ -377,6 +386,13 @@ function normalizeInput(
 
   if (kind === 'zone') {
     if (!zonePointsJson) return { ok: false, error: '区域须提供 zonePoints' }
+  } else if (kind === 'polyline') {
+    if (!pathPointsJson) return { ok: false, error: '折线须提供 pathPoints（至少 2 个顶点）' }
+    const parsed = parseJsonPoints(pathPointsJson)
+    if (!parsed || parsed.length < 2) return { ok: false, error: 'pathPoints 至少 2 个有效顶点' }
+    if (rotationMode === 'dynamic_track') {
+      return { ok: false, error: '折线不支持动态跟踪' }
+    }
   } else {
     const hasPath = Boolean(pathPointsJson)
     if (!hasPath && !glbUri) return { ok: false, error: '模型须提供 glbUri，或配置巡逻路径 pathPoints' }
@@ -398,6 +414,14 @@ function normalizeInput(
     }
   }
 
+  const zonePointsStored = kind === 'zone' ? zonePointsJson : null
+  const pathPointsStored =
+    kind === 'polyline' || kind === 'model' ? pathPointsJson : null
+  const glbStored = kind === 'model' ? glbUri : null
+  const patrolForModel = kind === 'model' ? patrolTruckCount : null
+  const patrolSegForModel = kind === 'model' ? patrolSegmentSeconds : null
+  const patrolStagForModel = kind === 'model' ? patrolStaggerSeconds : null
+
   return {
     ok: true,
     value: {
@@ -405,24 +429,24 @@ function normalizeInput(
       kind,
       name,
       visible,
-      glb_uri: glbUri,
+      glb_uri: glbStored,
       longitude,
       latitude,
       height,
       scale,
       heading_deg: headingDeg,
-      rotation_mode: rotationMode,
-      track_mmsi: trackMmsi,
+      rotation_mode: kind === 'polyline' ? 'fixed' : rotationMode,
+      track_mmsi: kind === 'polyline' ? null : trackMmsi,
       height_ref: heightRef,
       label_text: labelText,
       zone_code: zoneCode,
-      zone_points_json: zonePointsJson,
+      zone_points_json: zonePointsStored,
       fill_color: fillColor,
       outline_color: outlineColor,
-      path_points_json: pathPointsJson,
-      patrol_truck_count: patrolTruckCount,
-      patrol_segment_seconds: patrolSegmentSeconds,
-      patrol_stagger_seconds: patrolStaggerSeconds,
+      path_points_json: pathPointsStored,
+      patrol_truck_count: patrolForModel,
+      patrol_segment_seconds: patrolSegForModel,
+      patrol_stagger_seconds: patrolStagForModel,
       sort_order: sortOrder,
     },
   }

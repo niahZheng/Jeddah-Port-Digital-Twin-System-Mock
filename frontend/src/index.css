@@ -1436,7 +1436,7 @@ body {
   inset: 0;
 }
 
-/* 集货区 CY-01 / CY-02 上方：在库 vs 可集散余量（饼圈 + 文案） */
+/* 集货区 CY-01 / CY-02 上方：斜向引线 + 百分比气泡 */
 .yard-zone-cargo-tips {
   position: absolute;
   inset: 0;
@@ -1447,70 +1447,70 @@ body {
 
 .yard-zone-cargo-tip {
   position: absolute;
-  transform: translate(-50%, -100%);
-  margin-top: -8px;
+  transform: translate(-50%, -50%);
   pointer-events: auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 7px 10px 9px;
-  min-width: 96px;
-  border-radius: 10px;
-  background: rgba(15, 23, 42, 0.9);
-  border: 1px solid rgba(56, 189, 248, 0.42);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.38);
   /* 固定屏幕像素，不随根字号 / 视角变化 */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
 
+.yard-zone-cargo-tip__anchor {
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #e2e8f0;
+  border: 1px solid rgba(56, 189, 248, 0.7);
+  box-shadow: 0 0 0 2px rgba(15, 23, 42, 0.66);
+}
+
+.yard-zone-cargo-tip__leader {
+  position: absolute;
+  left: 4px;
+  top: 2px;
+  width: 44px;
+  height: 2px;
+  border-radius: 999px;
+  transform-origin: left center;
+  transform: rotate(-34deg);
+  background: linear-gradient(90deg, rgba(125, 211, 252, 0.95), rgba(56, 189, 248, 0.55));
+}
+
+.yard-zone-cargo-tip__bubble {
+  position: absolute;
+  left: 42px;
+  top: -44px;
+  min-width: 68px;
+  padding: 6px 10px 7px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.92);
+  border: 1px solid rgba(56, 189, 248, 0.42);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.38);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
 .yard-zone-cargo-tip__title {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
   color: #bae6fd;
   text-transform: uppercase;
-  max-width: 176px;
   text-align: center;
-  line-height: 1.25;
-}
-
-.yard-zone-cargo-tip__chart {
-  position: relative;
-  width: 52px;
-  height: 52px;
-  margin: 2px 0;
-}
-
-.yard-zone-cargo-tip__pie {
-  display: block;
+  line-height: 1.2;
+  max-width: 164px;
+  white-space: nowrap;
 }
 
 .yard-zone-cargo-tip__pct {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -52%);
   font-size: 12px;
   font-weight: 800;
   color: #f8fafc;
   letter-spacing: -0.02em;
-  pointer-events: none;
-}
-
-.yard-zone-cargo-tip__sub {
-  font-size: 10px;
-  font-weight: 600;
-  color: #e2e8f0;
-  line-height: 1.2;
-  text-align: center;
-}
-
-.yard-zone-cargo-tip__sub--muted {
-  font-weight: 500;
-  color: #94a3b8;
-  font-size: 9px;
 }
 
 /* 底图左上角指南针（随相机 heading 指示真北） */
