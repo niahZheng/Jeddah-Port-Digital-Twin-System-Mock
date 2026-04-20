@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import bcrypt from 'bcryptjs'
 import Database from 'better-sqlite3'
 import { ROLE_KEYS } from '../auth/navByRole.js'
@@ -12,8 +13,11 @@ export function getDb(): Database.Database {
   return db
 }
 
+/** 始终使用 backend/data，避免从仓库根目录启动时 cwd 变化导致用到另一份空库 */
+const backendRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+
 export function initDatabase() {
-  const dir = path.join(process.cwd(), 'data')
+  const dir = path.join(backendRoot, 'data')
   fs.mkdirSync(dir, { recursive: true })
   const dbPath = path.join(dir, 'port.db')
   db = new Database(dbPath)

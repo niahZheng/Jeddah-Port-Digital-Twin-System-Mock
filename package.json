@@ -2,11 +2,19 @@
   "name": "jeddah-port-digital-twin",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0 <23.0.0"
+  },
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
     "dev": "node -e \"console.log('Frontend URL: http://localhost:5173 (port 5173)')\" && concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
+    "dev:backend": "npm run dev -w backend",
+    "dev:frontend": "npm run dev -w frontend",
+    "install:all": "npm install",
+    "rebuild:native": "npm rebuild better-sqlite3 -w backend"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

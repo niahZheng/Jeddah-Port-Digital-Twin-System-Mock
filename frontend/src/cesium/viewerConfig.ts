@@ -206,6 +206,32 @@ export function configureIonFromEnv() {
   if (token) Ion.defaultAccessToken = token
 }
 
+/** 地形：world 依赖 Cesium Ion；网络/Ion 异常时可设 VITE_TERRAIN_MODE=ellipsoid */
+export function terrainModeFromEnv(): TerrainMode {
+  return import.meta.env.VITE_TERRAIN_MODE === 'ellipsoid' ? 'ellipsoid' : 'world'
+}
+
+/**
+ * 底图：默认 OSM；部分网络下 tile.openstreetmap.org 会返回非 PNG（如 HTML），导致解码失败。
+ * 可设 VITE_BASEMAP=carto 使用 CARTO 栅格（仍基于 OSM 数据，需标注 © OSM © CARTO）。
+ */
+export function applyConfiguredBasemap(viewer: Viewer): void {
+  const mode = (import.meta.env.VITE_BASEMAP ?? 'osm').toLowerCase()
+  if (mode === 'carto') {
+    viewer.imageryLayers.removeAll()
+    viewer.imageryLayers.addImageryProvider(
+      new UrlTemplateImageryProvider({
+        url: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+        minimumLevel: 0,
+        maximumLevel: 20,
+        credit: '© OpenStreetMap contributors © CARTO',
+      }),
+    )
+    return
+  }
+  applyOsmStreetBasemap(viewer)
+}
+
 /** 以约 45° 俯角斜视吉达灯塔，并解除 lookAt 参考系（相机位置留在世界坐标系） */
 export function flyToJeddahLighthouse(viewer: Viewer, defaultView?: CameraViewState | null) {
   if (defaultView) {
@@ -264,7 +290,7 @@ export function terrainFromMode(mode: TerrainMode, options?: any): Terrain {
     : new Terrain(Promise.resolve(new EllipsoidTerrainProvider()))
 }
 
-/** 创建 Viewer；影像由 {@link applyOsmStreetBasemap} 设置 */
+/** 创建 Viewer；影像由 {@link applyConfiguredBasemap} 设置 */
 export function createViewer(
   container: HTMLElement,
   terrainMode: TerrainMode,

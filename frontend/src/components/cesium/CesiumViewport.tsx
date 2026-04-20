@@ -41,7 +41,7 @@ import {
   syncDynamicBasemapForShip,
 } from '../../cesium/basemapEntities'
 import {
-  applyOsmStreetBasemap,
+  applyConfiguredBasemap,
   applyCesiumGeographicModel,
   bindHomeToLighthouse,
   configureIonFromEnv,
@@ -49,6 +49,7 @@ import {
   flyToJeddahLighthouse,
   DEFAULT_CAMERA_VIEW_KEY,
   captureCameraView,
+  terrainModeFromEnv,
 } from '../../cesium/viewerConfig'
 import {
   COORD_RECORDING_FINISHED_EVENT,
@@ -114,8 +115,8 @@ export function CesiumViewport() {
     configureIonFromEnv()
     let viewer: Viewer | null = null
     try {
-      // OSM 3D 建筑按全球地形/高程数据落位；椭球地形无起伏时影像贴在椭球上，楼体会整体高于“底图”
-      viewer = createViewer(el, 'world')
+      // world：Cesium World Terrain（Ion）；ellipsoid：无 Ion 高程，见 VITE_TERRAIN_MODE
+      viewer = createViewer(el, terrainModeFromEnv())
     } catch (err) {
       console.error('Failed to initialize Cesium (WebGL context).', err)
       return
@@ -171,7 +172,7 @@ export function CesiumViewport() {
       }
     }
     void applyInitialCamera()
-    applyOsmStreetBasemap(viewer)
+    applyConfiguredBasemap(viewer)
     bindHomeToLighthouse(viewer)
 
     const unsubBasemap = useBasemapStore.subscribe(() => {
