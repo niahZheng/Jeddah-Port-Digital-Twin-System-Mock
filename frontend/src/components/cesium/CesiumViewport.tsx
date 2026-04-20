@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Cartesian2,
   Cartesian3,
@@ -10,7 +10,6 @@ import {
   defined,
   Entity,
   HeightReference,
-  JulianDate,
   LabelStyle,
   ModelGraphics,
   ScreenSpaceEventHandler,
@@ -29,7 +28,6 @@ import {
   saveCameraView,
   subscribePortSocket,
 } from '../../api/client'
-import { freightShipLabelLines } from '../../cesium/freightSymbols'
 import {
   SHIP_MODEL_SCALE,
   shipDraftMeters,
@@ -38,7 +36,6 @@ import {
 } from '../../cesium/shipModels'
 import {
   applyBasemapEntities,
-  basemapCraneAnimationEntityIds,
   syncDynamicBasemapForShip,
 } from '../../cesium/basemapEntities'
 import {
@@ -50,29 +47,170 @@ import {
   flyToJeddahLighthouse,
   DEFAULT_CAMERA_VIEW_KEY,
   captureCameraView,
+  JEDDAH_LIGHTHOUSE,
   terrainModeFromEnv,
 } from '../../cesium/viewerConfig'
 import {
   COORD_RECORDING_FINISHED_EVENT,
-  GANTRY_ANIM_STATE_EVENT,
   SET_DEFAULT_CAMERA_EVENT,
-  SET_MAX_CAMERA_VIEW_EVENT,
   SHIP_DRAFTS_UPDATED_EVENT,
   START_COORD_RECORDING_EVENT,
   STOP_COORD_RECORDING_EVENT,
-  TOGGLE_GANTRY_ANIMATION_EVENT,
-  UNLOCK_MAX_CAMERA_VIEW_EVENT,
-  type GantryAnimStateDetail,
 } from '../../cesium/cameraEvents'
 import { useScreenStore } from '../../store/screenStore'
 import { useAuthStore } from '../../store/authStore'
 import { useBasemapStore } from '../../store/basemapStore'
-import type { PortStats, ShipData } from '../../types/port'
+import { useSimulationStore } from '../../store/simulationStore'
+import type { PortStats, QuayCraneStatus, ShipData } from '../../types/port'
 import { QuayCraneStatusTips } from './QuayCraneStatusTips'
 import { YardZoneCargoTips } from './YardZoneCargoTips'
 
 /** 每条船上次用于三维的 Z 轴偏移；变化时 remove+add 实体，避免 Cesium Model 仍用旧 modelMatrix */
 const lastShipDraftByMmsi = new Map<string, number>()
+const SIM_SHIP_MMSI = '403123456'
+const SIM_WAIT_POINT = {
+  longitude: 39.152757,
+  latitude: 21.466392,
+}
+const SIM_WAIT_AREA_POLYGON = [
+  { longitude: SIM_WAIT_POINT.longitude - 0.001, latitude: SIM_WAIT_POINT.latitude - 0.00075, height: -0.01 },
+  { longitude: SIM_WAIT_POINT.longitude + 0.001, latitude: SIM_WAIT_POINT.latitude - 0.00075, height: -0.01 },
+  { longitude: SIM_WAIT_POINT.longitude + 0.001, latitude: SIM_WAIT_POINT.latitude + 0.00075, height: -0.01 },
+  { longitude: SIM_WAIT_POINT.longitude - 0.001, latitude: SIM_WAIT_POINT.latitude + 0.00075, height: -0.01 },
+]
+const SIM_ROUTE_MID_POINT = { longitude: 39.159288, latitude: 21.473701 }
+const SIM_BERTH_POINT = { longitude: 39.158487, latitude: 21.477323 }
+const SIM_DEPART_END_POINT = { longitude: 39.156282, latitude: 21.464661 }
+/**
+ * shipModels.ts 会统一加 75 度偏移；仿真船额外 +180 修正（当前模型前向与实际船头相反）。
+ * 最终让船头朝行进方向，避免“船尾朝前”。
+ */
+const SIM_SHIP_HEADING_CORRECTION_DEG = 105
+const PORT_CAMERA_RADIUS_M = 50_000
+const PORT_CAMERA_MIN_ZOOM_M = 220
+const PORT_CAMERA_MAX_ZOOM_M = 120_000
+const PORT_CAMERA_LAT_DELTA_DEG = PORT_CAMERA_RADIUS_M / 110_540
+const PORT_CAMERA_LON_DELTA_DEG =
+  PORT_CAMERA_RADIUS_M /
+  (111_320 * Math.cos((JEDDAH_LIGHTHOUSE.latitude * Math.PI) / 180))
+const PORT_CAMERA_RECT = Rectangle.fromDegrees(
+  JEDDAH_LIGHTHOUSE.longitude - PORT_CAMERA_LON_DELTA_DEG,
+  JEDDAH_LIGHTHOUSE.latitude - PORT_CAMERA_LAT_DELTA_DEG,
+  JEDDAH_LIGHTHOUSE.longitude + PORT_CAMERA_LON_DELTA_DEG,
+  JEDDAH_LIGHTHOUSE.latitude + PORT_CAMERA_LAT_DELTA_DEG,
+)
+
+function clamp01(v: number): number {
+  return Math.max(0, Math.min(1, v))
+}
+
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t
+}
+
+function normHeadingDeg(v: number): number {
+  return ((v % 360) + 360) % 360
+}
+
+function bearingDeg(from: LonLat, to: LonLat): number {
+  return normHeadingDeg(
+    CesiumMath.toDegrees(Math.atan2(to.longitude - from.longitude, to.latitude - from.latitude)),
+  )
+}
+
+const SIM_BERTH_APPROACH_HEADING_DEG = bearingDeg(SIM_ROUTE_MID_POINT, SIM_BERTH_POINT)
+
+type LonLat = { longitude: number; latitude: number }
+
+function routeSegmentLengths(points: LonLat[]): { segLens: number[]; total: number } {
+  const segLens: number[] = []
+  let total = 0
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i]!
+    const b = points[i + 1]!
+    const dx = b.longitude - a.longitude
+    const dy = b.latitude - a.latitude
+    const len = Math.hypot(dx, dy)
+    segLens.push(len)
+    total += len
+  }
+  return { segLens, total }
+}
+
+function sampleRouteAtDistance(points: LonLat[], distance: number): {
+  longitude: number
+  latitude: number
+} {
+  if (points.length < 2) {
+    const p = points[0] ?? { longitude: 0, latitude: 0 }
+    return { longitude: p.longitude, latitude: p.latitude }
+  }
+  const { segLens, total } = routeSegmentLengths(points)
+  if (total <= 1e-12) {
+    const p = points[0]!
+    return { longitude: p.longitude, latitude: p.latitude }
+  }
+  const target = Math.max(0, Math.min(total, distance))
+  let walked = 0
+  for (let i = 0; i < segLens.length; i += 1) {
+    const len = segLens[i]!
+    const nextWalked = walked + len
+    if (target <= nextWalked || i === segLens.length - 1) {
+      const a = points[i]!
+      const b = points[i + 1]!
+      const u = len <= 1e-12 ? 0 : (target - walked) / len
+      const longitude = lerp(a.longitude, b.longitude, u)
+      const latitude = lerp(a.latitude, b.latitude, u)
+      return { longitude, latitude }
+    }
+    walked = nextWalked
+  }
+  const p = points[points.length - 1]!
+  return { longitude: p.longitude, latitude: p.latitude }
+}
+
+/** 沿线路程前进，并用前视点计算船头方向（类似集卡巡逻“头超前”） */
+function followRouteWithLookAhead(points: LonLat[], tRaw: number, lookAheadRatio = 0.04): {
+  longitude: number
+  latitude: number
+  headingDeg: number
+} {
+  if (points.length < 2) {
+    const p = points[0] ?? { longitude: 0, latitude: 0 }
+    return { longitude: p.longitude, latitude: p.latitude, headingDeg: 0 }
+  }
+  const { total } = routeSegmentLengths(points)
+  if (total <= 1e-12) {
+    const p = points[0]!
+    return { longitude: p.longitude, latitude: p.latitude, headingDeg: 0 }
+  }
+  const t = clamp01(tRaw)
+  const dNow = t * total
+  const dAhead = Math.min(total, dNow + Math.max(total * lookAheadRatio, 1e-6))
+  const now = sampleRouteAtDistance(points, dNow)
+  const ahead = sampleRouteAtDistance(points, dAhead)
+  const headingDeg = CesiumMath.toDegrees(
+    Math.atan2(ahead.longitude - now.longitude, ahead.latitude - now.latitude),
+  )
+  return { longitude: now.longitude, latitude: now.latitude, headingDeg }
+}
+
+function pointInPolygonLonLat(
+  lon: number,
+  lat: number,
+  points: Array<{ longitude: number; latitude: number }>,
+): boolean {
+  let inside = false
+  for (let i = 0, j = points.length - 1; i < points.length; j = i, i += 1) {
+    const xi = points[i]!.longitude
+    const yi = points[i]!.latitude
+    const xj = points[j]!.longitude
+    const yj = points[j]!.latitude
+    const intersect = yi > lat !== yj > lat && lon < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
 
 /** 供 Vite HMR：修改 viewerConfig 下沉等常量后，对已加载的 OSM tileset 重新对齐（useEffect([]) 不会自动重跑） */
 const cesiumOsmHotRefs: { viewer: Viewer | null; tileset: Cesium3DTileset | null } = {
@@ -94,17 +232,6 @@ if (import.meta.hot) {
   })
 }
 
-function readModelRunAnimations(
-  prop: boolean | { getValue?: (t: JulianDate) => boolean | undefined } | undefined,
-  time: JulianDate,
-  defaultVal = true,
-): boolean {
-  if (prop == null) return defaultVal
-  if (typeof prop === 'boolean') return prop
-  const v = prop.getValue?.(time)
-  return v !== undefined ? Boolean(v) : defaultVal
-}
-
 export function CesiumViewport() {
   const containerRef = useRef<HTMLDivElement>(null)
   const compassDiskRef = useRef<HTMLDivElement>(null)
@@ -118,9 +245,9 @@ export function CesiumViewport() {
   const recordedCoordsRef = useRef<
     Array<{ longitude: number; latitude: number; height: number }>
   >([])
-  const maxCameraHeightRef = useRef<number | null>(null)
   const maxCameraRectRef = useRef<Rectangle | null>(null)
   const clampingCameraRef = useRef(false)
+  const simOverlayEntityIdsRef = useRef<string[]>([])
 
   const setShips = useScreenStore((s) => s.setShips)
   const updateShip = useScreenStore((s) => s.updateShip)
@@ -129,6 +256,132 @@ export function CesiumViewport() {
   const stats = useScreenStore((s) => s.stats)
   const basemapEntities = useBasemapStore((s) => s.entities)
   const token = useAuthStore((s) => s.token)
+  const simEnabled = useSimulationStore((s) => s.enabled)
+  const simProgress = useSimulationStore((s) => s.progress)
+  const simEnabledRef = useRef(simEnabled)
+  const simProgressRef = useRef(simProgress)
+
+  useEffect(() => {
+    simEnabledRef.current = simEnabled
+    simProgressRef.current = simProgress
+  }, [simEnabled, simProgress])
+
+  const simCraneStatuses = useMemo(() => {
+    if (!simEnabled) return null
+    const p = simProgress
+    const statuses = new Map<string, QuayCraneStatus>()
+    const qcBusy = p >= 28 && p < 60
+    const gcBusy = p >= 60 && p < 90
+    for (let i = 1; i <= 11; i += 1) {
+      const code = `QC-${String(i).padStart(2, '0')}`
+      statuses.set(code, i === 1 || i === 2 ? (qcBusy ? 'busy' : 'idle') : 'idle')
+    }
+    for (let i = 1; i <= 3; i += 1) {
+      const code = `GC-${String(i).padStart(2, '0')}`
+      statuses.set(code, gcBusy ? 'busy' : 'idle')
+    }
+    return statuses
+  }, [simEnabled, simProgress])
+
+  const effectiveCraneStats = useMemo(() => {
+    if (simCraneStatuses) {
+      return Array.from(simCraneStatuses.entries()).map(([craneCode, status]) => ({
+        craneCode,
+        status,
+      }))
+    }
+    return stats?.quayCranes
+  }, [simCraneStatuses, stats?.quayCranes])
+
+  const effectiveYardZones = useMemo(() => {
+    if (!simEnabled) return stats?.yardZones
+    const p = simProgress
+    const cy01Count =
+      p < 28
+        ? 0
+        : p < 60
+          ? Math.round(((p - 28) / 32) * 30)
+          : p < 100
+            ? Math.round((1 - clamp01((p - 60) / 40)) * 30)
+            : 0
+    const base = stats?.yardZones ?? []
+    let replaced = false
+    const next = base.map((z) => {
+      if (String(z.zoneCode).trim().toUpperCase() !== 'CY-01') return z
+      replaced = true
+      return { ...z, occupiedTeu: cy01Count, capacityTeu: 30 }
+    })
+    if (!replaced) {
+      next.push({ zoneCode: 'CY-01', shortName: 'CY-01集货区', occupiedTeu: cy01Count, capacityTeu: 30 })
+    }
+    return next
+  }, [simEnabled, simProgress, stats?.yardZones])
+
+  const applySimShipWithState = (
+    ship: ShipData,
+    enabled: boolean,
+    progress: number,
+  ): ShipData => {
+    if (!enabled || ship.mmsi !== SIM_SHIP_MMSI) return ship
+    const p = progress
+    if (p <= 0) {
+      return {
+        ...ship,
+        position: { ...SIM_WAIT_POINT },
+        heading: normHeadingDeg(82 + SIM_SHIP_HEADING_CORRECTION_DEG),
+        speed: 0,
+        status: 'anchored',
+      }
+    }
+    if (p < 18) {
+      const t = clamp01(p / 18)
+      const motion = followRouteWithLookAhead(
+        [SIM_WAIT_POINT, SIM_ROUTE_MID_POINT, SIM_BERTH_POINT],
+        t,
+      )
+      return {
+        ...ship,
+        position: { longitude: motion.longitude, latitude: motion.latitude },
+        heading: normHeadingDeg(motion.headingDeg + SIM_SHIP_HEADING_CORRECTION_DEG),
+        speed: 9.5,
+        status: 'underway',
+      }
+    }
+    if (p < 50) {
+      return {
+        ...ship,
+        position: { ...SIM_BERTH_POINT },
+        // 靠泊后保持入港末段方向，避免到港瞬间额外旋转
+        heading: normHeadingDeg(SIM_BERTH_APPROACH_HEADING_DEG + SIM_SHIP_HEADING_CORRECTION_DEG),
+        speed: 0,
+        status: 'moored',
+      }
+    }
+    if (p < 68) {
+      const t = clamp01((p - 50) / 18)
+      const motion = followRouteWithLookAhead(
+        [SIM_BERTH_POINT, SIM_ROUTE_MID_POINT, SIM_DEPART_END_POINT],
+        t,
+      )
+      return {
+        ...ship,
+        position: { longitude: motion.longitude, latitude: motion.latitude },
+        heading: normHeadingDeg(motion.headingDeg + SIM_SHIP_HEADING_CORRECTION_DEG),
+        speed: 8.6,
+        status: 'underway',
+      }
+    }
+    return {
+      ...ship,
+      position: { ...SIM_DEPART_END_POINT },
+      heading: normHeadingDeg(196 + SIM_SHIP_HEADING_CORRECTION_DEG),
+      speed: 0.2,
+      status: 'anchored',
+    }
+  }
+
+  const applySimShipIfNeeded = (ship: ShipData): ShipData =>
+    applySimShipWithState(ship, simEnabled, simProgress)
 
   useEffect(() => {
     const el = containerRef.current
@@ -147,6 +400,9 @@ export function CesiumViewport() {
     viewerRef.current = viewer
     cesiumOsmHotRefs.viewer = viewer
     setMapViewer(viewer)
+    maxCameraRectRef.current = PORT_CAMERA_RECT
+    viewer.scene.screenSpaceCameraController.minimumZoomDistance = PORT_CAMERA_MIN_ZOOM_M
+    viewer.scene.screenSpaceCameraController.maximumZoomDistance = PORT_CAMERA_MAX_ZOOM_M
     viewer.scene.globe.show = true
     // 关键：让地球/地形参与深度测试，地表会遮挡其下方模型（否则船体会“透地显示”）
     viewer.scene.globe.depthTestAgainstTerrain = true
@@ -227,68 +483,27 @@ export function CesiumViewport() {
       isCoordRecordingRef.current = false
       void copyRecordedCoordinatesToClipboard(recordedCoordsRef.current)
     }
-    const onSetMaxCameraView = () => {
-      const current = Cartographic.fromCartesian(viewer.camera.positionWC)
-      if (!current) return
-      const lockHeight = Math.max(0, current.height)
-      maxCameraHeightRef.current = lockHeight
-      maxCameraRectRef.current =
-        viewer.camera.computeViewRectangle(viewer.scene.globe.ellipsoid) ?? null
-      // 原生滚轮缩放上限：锁定后禁止再拉远（但仍可拉近）
-      viewer.scene.screenSpaceCameraController.maximumZoomDistance = lockHeight
-    }
-    const onUnlockMaxCameraView = () => {
-      maxCameraHeightRef.current = null
-      maxCameraRectRef.current = null
-      viewer.scene.screenSpaceCameraController.maximumZoomDistance = Number.POSITIVE_INFINITY
-    }
-
-    const onToggleGantryAnimation = () => {
-      const ids = basemapCraneAnimationEntityIds(useBasemapStore.getState().entities)
-      if (ids.length === 0) return
-      const now = JulianDate.now()
-      let prev = true
-      let found = false
-      for (const id of ids) {
-        const e = viewer.entities.getById(id)
-        if (!e?.model) continue
-        prev = readModelRunAnimations(
-          e.model.runAnimations as boolean | { getValue?: (t: JulianDate) => boolean | undefined },
-          now,
-        )
-        found = true
-        break
-      }
-      if (!found) return
-      const next = !prev
-      for (const id of ids) {
-        const e = viewer.entities.getById(id)
-        if (!e?.model) continue
-        e.model.runAnimations = new ConstantProperty(next)
-      }
-      viewer.scene.requestRender()
-      window.dispatchEvent(
-        new CustomEvent<GantryAnimStateDetail>(GANTRY_ANIM_STATE_EVENT, {
-          detail: { running: next },
-        }),
-      )
-    }
     const onCameraChanged = () => {
       const rect = maxCameraRectRef.current
       if (!rect || clampingCameraRef.current) return
-      const currentRect = viewer.camera.computeViewRectangle(viewer.scene.globe.ellipsoid)
-      if (!currentRect) return
-      const outOfBounds =
-        currentRect.west < rect.west ||
-        currentRect.east > rect.east ||
-        currentRect.south < rect.south ||
-        currentRect.north > rect.north
-      if (!outOfBounds) return
+      const current = Cartographic.fromCartesian(viewer.camera.positionWC)
+      if (!current) return
+      const clampedLon = Math.min(rect.east, Math.max(rect.west, current.longitude))
+      const clampedLat = Math.min(rect.north, Math.max(rect.south, current.latitude))
+      const clampedH = Math.min(
+        PORT_CAMERA_MAX_ZOOM_M,
+        Math.max(PORT_CAMERA_MIN_ZOOM_M, current.height),
+      )
+      const moved =
+        Math.abs(clampedLon - current.longitude) > 1e-12 ||
+        Math.abs(clampedLat - current.latitude) > 1e-12 ||
+        Math.abs(clampedH - current.height) > 0.01
+      if (!moved) return
 
       clampingCameraRef.current = true
       try {
         viewer.camera.setView({
-          destination: rect,
+          destination: Cartesian3.fromRadians(clampedLon, clampedLat, clampedH),
           orientation: {
             heading: viewer.camera.heading,
             pitch: viewer.camera.pitch,
@@ -381,8 +596,11 @@ export function CesiumViewport() {
     const onShipDraftsUpdated = () => {
       void fetchShips()
         .then((ships) => {
-          setShips(ships)
-          for (const s of ships) {
+          const simShips = ships.map((s) =>
+            applySimShipWithState(s, simEnabledRef.current, simProgressRef.current),
+          )
+          setShips(simShips)
+          for (const s of simShips) {
             upsertShipEntity(viewer, entitiesRef.current, s)
             syncDynamicBasemapForShip(viewer, useBasemapStore.getState().entities, s)
           }
@@ -391,17 +609,17 @@ export function CesiumViewport() {
     }
 
     window.addEventListener(SET_DEFAULT_CAMERA_EVENT, onSetDefaultCamera)
-    window.addEventListener(SET_MAX_CAMERA_VIEW_EVENT, onSetMaxCameraView)
-    window.addEventListener(UNLOCK_MAX_CAMERA_VIEW_EVENT, onUnlockMaxCameraView)
-    window.addEventListener(TOGGLE_GANTRY_ANIMATION_EVENT, onToggleGantryAnimation)
     window.addEventListener(START_COORD_RECORDING_EVENT, onStartCoordRecording)
     window.addEventListener(STOP_COORD_RECORDING_EVENT, onStopCoordRecording)
     window.addEventListener(SHIP_DRAFTS_UPDATED_EVENT, onShipDraftsUpdated)
 
     void fetchShips()
       .then((ships) => {
-        setShips(ships)
-        for (const s of ships) {
+        const simShips = ships.map((s) =>
+          applySimShipWithState(s, simEnabledRef.current, simProgressRef.current),
+        )
+        setShips(simShips)
+        for (const s of simShips) {
           upsertShipEntity(viewer, entitiesRef.current, s)
           syncDynamicBasemapForShip(viewer, useBasemapStore.getState().entities, s)
         }
@@ -411,7 +629,11 @@ export function CesiumViewport() {
     const unsubWs = subscribePortSocket(
       (msg) => {
         if (msg.type === 'ship_update') {
-          const p = parseShipData(msg.payload as Record<string, unknown>)
+          const p = applySimShipWithState(
+            parseShipData(msg.payload as Record<string, unknown>),
+            simEnabledRef.current,
+            simProgressRef.current,
+          )
           updateShip(p)
           upsertShipEntity(viewer, entitiesRef.current, p)
           syncDynamicBasemapForShip(viewer, useBasemapStore.getState().entities, p)
@@ -431,14 +653,10 @@ export function CesiumViewport() {
       viewer.scene.postRender.removeEventListener(updateCompass)
       clickHandler.destroy()
       window.removeEventListener(SET_DEFAULT_CAMERA_EVENT, onSetDefaultCamera)
-      window.removeEventListener(SET_MAX_CAMERA_VIEW_EVENT, onSetMaxCameraView)
-      window.removeEventListener(UNLOCK_MAX_CAMERA_VIEW_EVENT, onUnlockMaxCameraView)
-      window.removeEventListener(TOGGLE_GANTRY_ANIMATION_EVENT, onToggleGantryAnimation)
       window.removeEventListener(START_COORD_RECORDING_EVENT, onStartCoordRecording)
       window.removeEventListener(STOP_COORD_RECORDING_EVENT, onStopCoordRecording)
       window.removeEventListener(SHIP_DRAFTS_UPDATED_EVENT, onShipDraftsUpdated)
       viewer.camera.changed.removeEventListener(onCameraChanged)
-      viewer.scene.screenSpaceCameraController.maximumZoomDistance = Number.POSITIVE_INFINITY
       if (hoveredRestoreRef.current) {
         hoveredRestoreRef.current()
       }
@@ -475,15 +693,177 @@ export function CesiumViewport() {
   useEffect(() => {
     const viewer = viewerRef.current
     if (!viewer) return
+    const ships = useScreenStore.getState().ships.map(applySimShipIfNeeded)
+    useScreenStore.getState().setShips(ships)
+    for (const s of ships) {
+      upsertShipEntity(viewer, entitiesRef.current, s)
+      syncDynamicBasemapForShip(viewer, useBasemapStore.getState().entities, s)
+    }
+  }, [simEnabled, simProgress])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
+    for (const id of simOverlayEntityIdsRef.current) {
+      const e = viewer.entities.getById(id)
+      if (e) viewer.entities.remove(e)
+    }
+    simOverlayEntityIdsRef.current = []
+    if (!simEnabled) {
+      viewer.scene.requestRender()
+      return
+    }
+
+    const waitingId = 'simulation:waiting-zone'
+    const waitingLabelId = 'simulation:waiting-zone-label'
+    const waitPositions: number[] = []
+    for (const p of SIM_WAIT_AREA_POLYGON) waitPositions.push(p.longitude, p.latitude, p.height)
+    viewer.entities.add({
+      id: waitingId,
+      name: '等待入港区',
+      polygon: {
+        hierarchy: Cartesian3.fromDegreesArrayHeights(waitPositions),
+        material: Color.fromCssColorString('#f59e0b').withAlpha(0.18),
+        outline: true,
+        outlineColor: Color.fromCssColorString('#fbbf24'),
+        perPositionHeight: true,
+      },
+    })
+    viewer.entities.add({
+      id: waitingLabelId,
+      name: '等待入港区',
+      position: Cartesian3.fromDegrees(SIM_WAIT_POINT.longitude, SIM_WAIT_POINT.latitude, 6),
+      label: {
+        text: '等待入港区',
+        font: '13px system-ui,sans-serif',
+        fillColor: Color.fromCssColorString('#fcd34d'),
+        outlineColor: Color.BLACK,
+        outlineWidth: 2,
+        style: LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: VerticalOrigin.BOTTOM,
+        pixelOffset: new Cartesian2(0, -8),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    })
+    const routeId = 'simulation:ship-route'
+    viewer.entities.add({
+      id: routeId,
+      name: 'MV RED SEA 1 靠泊路径',
+      polyline: {
+        positions: Cartesian3.fromDegreesArray([
+          SIM_WAIT_POINT.longitude,
+          SIM_WAIT_POINT.latitude,
+          SIM_ROUTE_MID_POINT.longitude,
+          SIM_ROUTE_MID_POINT.latitude,
+          SIM_BERTH_POINT.longitude,
+          SIM_BERTH_POINT.latitude,
+        ]),
+        width: 2,
+        material: Color.fromCssColorString('#f97316').withAlpha(0.9),
+        clampToGround: true,
+      },
+    })
+    const departRouteId = 'simulation:ship-route-outbound'
+    viewer.entities.add({
+      id: departRouteId,
+      name: 'MV RED SEA 1 离港路径',
+      polyline: {
+        positions: Cartesian3.fromDegreesArray([
+          SIM_BERTH_POINT.longitude,
+          SIM_BERTH_POINT.latitude,
+          SIM_ROUTE_MID_POINT.longitude,
+          SIM_ROUTE_MID_POINT.latitude,
+          SIM_DEPART_END_POINT.longitude,
+          SIM_DEPART_END_POINT.latitude,
+        ]),
+        width: 2,
+        material: Color.fromCssColorString('#22d3ee').withAlpha(0.9),
+        clampToGround: true,
+      },
+    })
+    simOverlayEntityIdsRef.current.push(waitingId, waitingLabelId, routeId, departRouteId)
+
+    const cy01 = basemapEntities.find(
+      (e) => e.kind === 'zone' && (e.zoneCode ?? '').trim().toUpperCase() === 'CY-01' && e.zonePoints,
+    )
+    if (cy01?.zonePoints) {
+      const points = cy01.zonePoints
+      const count =
+        simProgress < 45
+          ? 0
+          : simProgress < 65
+            ? Math.round(((simProgress - 45) / 20) * 30)
+            : Math.round((1 - clamp01((simProgress - 65) / 35)) * 30)
+      if (count > 0) {
+        const minLon = Math.min(...points.map((p) => p.longitude))
+        const maxLon = Math.max(...points.map((p) => p.longitude))
+        const minLat = Math.min(...points.map((p) => p.latitude))
+        const maxLat = Math.max(...points.map((p) => p.latitude))
+        const bands = [
+          { start: 0, end: 1 / 3 },
+          { start: 1 / 3, end: 2 / 3 },
+          { start: 2 / 3, end: 1 },
+        ]
+        const colors = ['#ef4444', '#22c55e', '#3b82f6']
+        const roadGapRatio = 0.03
+        const lonSpan = maxLon - minLon
+        const latSpan = maxLat - minLat
+        const lonStep = Math.max(0.00009, lonSpan / 14)
+        const latStep = Math.max(0.00005, latSpan / 16)
+        const avgH = points.reduce((acc, p) => acc + p.height, 0) / points.length
+        const footprint = points.map((p) => ({ longitude: p.longitude, latitude: p.latitude }))
+        const each = Math.floor(count / 3)
+        const remain = count - each * 3
+
+        for (let b = 0; b < 3; b += 1) {
+          const target = each + (b < remain ? 1 : 0)
+          if (target <= 0) continue
+          const bandMin = minLon + bands[b]!.start * lonSpan + (b > 0 ? roadGapRatio * lonSpan : 0)
+          const bandMax = minLon + bands[b]!.end * lonSpan - (b < 2 ? roadGapRatio * lonSpan : 0)
+          let made = 0
+          let idx = 0
+          for (let lon = bandMin; lon <= bandMax && made < target; lon += lonStep) {
+            for (
+              let lat = minLat + latStep * 0.6;
+              lat <= maxLat - latStep * 0.6 && made < target;
+              lat += latStep
+            ) {
+              if (!pointInPolygonLonLat(lon, lat, footprint)) continue
+              const id = `simulation:cy01:container:${b}:${idx}`
+              viewer.entities.add({
+                id,
+                name: `CY-01 模拟集装箱 ${b + 1}-${idx + 1}`,
+                position: Cartesian3.fromDegrees(lon, lat, avgH + 1.5),
+                box: {
+                  dimensions: new ConstantProperty(new Cartesian3(10.8, 2.4, 2.8)),
+                  material: Color.fromCssColorString(colors[b]!).withAlpha(0.92),
+                  outline: true,
+                  outlineColor: Color.fromCssColorString('#082f49'),
+                },
+              })
+              simOverlayEntityIdsRef.current.push(id)
+              made += 1
+              idx += 1
+            }
+          }
+        }
+      }
+    }
+    viewer.scene.requestRender()
+  }, [basemapEntities, simEnabled, simProgress])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer) return
     const statusByCode = new Map(
-      (stats?.quayCranes ?? []).map((x) => [x.craneCode.trim().toUpperCase(), x.status] as const),
+      (effectiveCraneStats ?? []).map((x) => [x.craneCode.trim().toUpperCase(), x.status] as const),
     )
     for (const cfg of basemapEntities) {
       if (cfg.kind !== 'model' || !cfg.visible) continue
-      if (!cfg.glbUri?.includes('crane_harbour')) continue
+      if (!cfg.glbUri?.includes('crane_harbour') && !cfg.glbUri?.includes('gantry_crane')) continue
       const code =
         (cfg.labelText ?? '').trim().toUpperCase() ||
-        cfg.name.toUpperCase().match(/QC-\d{2}/)?.[0] ||
+        cfg.name.toUpperCase().match(/(QC|GC)-\d{2}/)?.[0] ||
         ''
       const status = statusByCode.get(code) ?? 'idle'
       const model = viewer.entities.getById(`basemap:${cfg.id}`)?.model
@@ -491,7 +871,7 @@ export function CesiumViewport() {
       model.runAnimations = new ConstantProperty(status === 'busy')
     }
     viewer.scene.requestRender()
-  }, [basemapEntities, stats?.quayCranes])
+  }, [basemapEntities, effectiveCraneStats])
 
   return (
     <div className="cesium-viewport-shell">
@@ -499,12 +879,12 @@ export function CesiumViewport() {
       <YardZoneCargoTips
         viewer={mapViewer}
         basemapEntities={basemapEntities}
-        zones={stats?.yardZones}
+        zones={effectiveYardZones}
       />
       <QuayCraneStatusTips
         viewer={mapViewer}
         basemapEntities={basemapEntities}
-        cranes={stats?.quayCranes}
+        cranes={effectiveCraneStats}
       />
       <div
         className="cesium-compass"
@@ -521,22 +901,6 @@ export function CesiumViewport() {
       </div>
     </div>
   )
-}
-
-function shipEntityLabel(ship: ShipData) {
-  return {
-    text: new ConstantProperty(freightShipLabelLines(ship)),
-    font: '15px system-ui,sans-serif',
-    fillColor: Color.WHITE,
-    outlineColor: Color.BLACK,
-    outlineWidth: 5,
-    style: LabelStyle.FILL_AND_OUTLINE,
-    verticalOrigin: VerticalOrigin.BOTTOM,
-    pixelOffset: new Cartesian2(0, -8),
-    /** 与船模一致：椭球高直接叠加 zOffset，避免 RELATIVE_TO_GROUND 与影像/地形采样不一致 */
-    heightReference: HeightReference.NONE,
-    disableDepthTestDistance: Number.POSITIVE_INFINITY,
-  }
 }
 
 function upsertShipEntity(
@@ -581,7 +945,6 @@ function upsertShipEntity(
         enableVerticalExaggeration: new ConstantProperty(false),
         runAnimations: false,
       }),
-      label: shipEntityLabel(ship),
     })
     map.set(ship.mmsi, entity)
     viewer.scene.requestRender()
@@ -599,11 +962,6 @@ function upsertShipEntity(
     entity.model.scale = new ConstantProperty(SHIP_MODEL_SCALE)
     entity.model.heightReference = new ConstantProperty(HeightReference.NONE)
     entity.model.enableVerticalExaggeration = new ConstantProperty(false)
-  }
-
-  if (entity.label) {
-    entity.label.text = new ConstantProperty(freightShipLabelLines(ship))
-    entity.label.heightReference = new ConstantProperty(HeightReference.NONE)
   }
 
   viewer.scene.requestRender()

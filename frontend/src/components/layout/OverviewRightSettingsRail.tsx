@@ -8,9 +8,7 @@ export type OverviewRightSettingsRailProps = {
   overviewDrawers?: ReactNode
 }
 
-/**
- * 可隐藏右侧栏：上部为业务抽屉（折叠/展开），下部为运行指标 / 船舶 / 预警（与三栏 RightPanel 一致）
- */
+/** 可隐藏右侧栏：上部为业务抽屉（折叠/展开） */
 export function OverviewRightSettingsRail({ overviewDrawers }: OverviewRightSettingsRailProps) {
   useRightSidebarData()
   const [open, setOpen] = useState(() => {
@@ -45,12 +43,7 @@ export function OverviewRightSettingsRail({ overviewDrawers }: OverviewRightSett
           {overviewDrawers ? (
             <div className="overview-rail-drawers">{overviewDrawers}</div>
           ) : null}
-          {overviewDrawers ? (
-            <div className="overview-rail-divider" role="separator" aria-hidden="true" />
-          ) : null}
-          <div className="overview-rail-metrics">
-            <RightSidebarMetricsDrawers />
-          </div>
+          <RightSidebarMetricsDrawers />
         </aside>
       ) : null}
     </div>

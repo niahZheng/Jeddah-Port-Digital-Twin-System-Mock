@@ -1,7 +1,7 @@
 :root {
   color-scheme: dark;
   --bg: #0b1220;
-  --panel: rgba(15, 23, 42, 0.82);
+  --panel: rgba(15, 23, 42, 0.6);
   --border: rgba(56, 189, 248, 0.25);
   --text: #e2e8f0;
   --muted: #94a3b8;
@@ -365,7 +365,7 @@ body {
   min-height: 0;
   min-width: 0;
   align-self: stretch;
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(15, 23, 42, 0.6);
   border-left: 1px solid var(--border);
 }
 
@@ -846,7 +846,7 @@ body {
 .bottom-console {
   flex: 0 0 auto;
   border-top: 1px solid var(--border);
-  background: rgba(15, 23, 42, 0.96);
+  background: rgba(15, 23, 42, 0.6);
   backdrop-filter: blur(8px);
 }
 
@@ -924,6 +924,47 @@ body {
   max-height: min(38vh, 320px);
   overflow: auto;
   font-size: 0.85rem;
+}
+
+.simulation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding-right: 0.25rem;
+}
+
+.simulation-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.simulation-panel input[type='range'] {
+  width: 100%;
+}
+
+.simulation-panel__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.simulation-panel__actions button {
+  padding: 0.3rem 0.65rem;
+  border-radius: 5px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.14);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.simulation-panel__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.3;
 }
 
 /* —— 底图配置弹窗 —— */
@@ -1485,7 +1526,7 @@ body {
   min-width: 68px;
   padding: 6px 10px 7px;
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(56, 189, 248, 0.42);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.38);
   display: flex;
@@ -1511,6 +1552,12 @@ body {
   font-weight: 800;
   color: #f8fafc;
   letter-spacing: -0.02em;
+}
+
+.yard-zone-cargo-tip__mini {
+  font-size: 9px;
+  color: #94a3b8;
+  line-height: 1.1;
 }
 
 /* 岸桥 QC 上方：斜向引线 + 状态气泡 */
@@ -1561,7 +1608,7 @@ body {
   min-width: 76px;
   padding: 5px 9px 6px;
   border-radius: 10px;
-  background: rgba(15, 23, 42, 0.92);
+  background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(56, 189, 248, 0.38);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
   display: flex;

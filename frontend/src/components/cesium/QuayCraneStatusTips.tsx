@@ -12,8 +12,8 @@ type Props = {
 
 function pickCraneCode(ent: BasemapEntity): string | null {
   const fromLabel = (ent.labelText ?? '').trim().toUpperCase()
-  if (/^QC-\d{2}$/.test(fromLabel)) return fromLabel
-  const m = (ent.name ?? '').toUpperCase().match(/QC-\d{2}/)
+  if (/^(QC|GC)-\d{2}$/.test(fromLabel)) return fromLabel
+  const m = (ent.name ?? '').toUpperCase().match(/(QC|GC)-\d{2}/)
   return m ? m[0]! : null
 }
 
@@ -29,7 +29,12 @@ export function QuayCraneStatusTips({ viewer, basemapEntities, cranes }: Props) 
   const targets = useMemo(
     () =>
       basemapEntities
-        .filter((e) => e.kind === 'model' && e.visible && e.glbUri?.includes('crane_harbour'))
+        .filter(
+          (e) =>
+            e.kind === 'model' &&
+            e.visible &&
+            Boolean(e.glbUri?.includes('crane_harbour') || e.glbUri?.includes('gantry_crane')),
+        )
         .map((e) => ({ entity: e, code: pickCraneCode(e) }))
         .filter((x): x is { entity: BasemapEntity; code: string } => Boolean(x.code)),
     [basemapEntities],

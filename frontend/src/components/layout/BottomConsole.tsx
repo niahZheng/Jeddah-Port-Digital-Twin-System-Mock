@@ -1,27 +1,27 @@
 import { useEffect, useState } from 'react'
 import { BasemapConfigModal } from '../basemap/BasemapConfigModal'
 import { ConfigFormSections } from '../widgets/ConfigFormSections'
+import { useSimulationStore } from '../../store/simulationStore'
 import {
   COORD_RECORDING_FINISHED_EVENT,
-  GANTRY_ANIM_STATE_EVENT,
   SET_DEFAULT_CAMERA_EVENT,
-  SET_MAX_CAMERA_VIEW_EVENT,
-  UNLOCK_MAX_CAMERA_VIEW_EVENT,
   START_COORD_RECORDING_EVENT,
   STOP_COORD_RECORDING_EVENT,
-  TOGGLE_GANTRY_ANIMATION_EVENT,
   type CoordRecordingFinishedDetail,
-  type GantryAnimStateDetail,
 } from '../../cesium/cameraEvents'
 
 export function BottomConsole() {
+  const [activeTab, setActiveTab] = useState<'config' | 'simulation'>('config')
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
-  const [isMaxViewLocked, setIsMaxViewLocked] = useState(false)
-  const [gantryAnimRunning, setGantryAnimRunning] = useState(true)
   const [isRecording, setIsRecording] = useState(false)
   const [recordingNotice, setRecordingNotice] = useState('')
   const [basemapModalOpen, setBasemapModalOpen] = useState(false)
+  const simProgress = useSimulationStore((s) => s.progress)
+  const simPlaying = useSimulationStore((s) => s.playing)
+  const setSimEnabled = useSimulationStore((s) => s.setEnabled)
+  const setSimProgress = useSimulationStore((s) => s.setProgress)
+  const setSimPlaying = useSimulationStore((s) => s.setPlaying)
 
   const handleSaveCameraAsDefault = () => {
     window.dispatchEvent(new Event(SET_DEFAULT_CAMERA_EVENT))
@@ -39,20 +39,6 @@ export function BottomConsole() {
     setRecordingNotice('坐标录制中：请在地图上点击采样点')
     window.dispatchEvent(new Event(START_COORD_RECORDING_EVENT))
     setIsRecording(true)
-  }
-
-  const handleSetMaxCameraView = () => {
-    if (isMaxViewLocked) {
-      window.dispatchEvent(new Event(UNLOCK_MAX_CAMERA_VIEW_EVENT))
-      setIsMaxViewLocked(false)
-      return
-    }
-    window.dispatchEvent(new Event(SET_MAX_CAMERA_VIEW_EVENT))
-    setIsMaxViewLocked(true)
-  }
-
-  const handleToggleGantryAnimation = () => {
-    window.dispatchEvent(new Event(TOGGLE_GANTRY_ANIMATION_EVENT))
   }
 
   useEffect(() => {
@@ -74,22 +60,45 @@ export function BottomConsole() {
   }, [])
 
   useEffect(() => {
-    const onGantryAnimState = (evt: Event) => {
-      const detail = (evt as CustomEvent<GantryAnimStateDetail>).detail
-      if (!detail) return
-      setGantryAnimRunning(detail.running)
-    }
-    window.addEventListener(GANTRY_ANIM_STATE_EVENT, onGantryAnimState)
-    return () => window.removeEventListener(GANTRY_ANIM_STATE_EVENT, onGantryAnimState)
-  }, [])
+    setSimEnabled(activeTab === 'simulation')
+  }, [activeTab, setSimEnabled])
+
+  useEffect(() => {
+    if (!simPlaying) return
+    const timer = window.setInterval(() => {
+      const next = simProgress + 1
+      if (next >= 100) {
+        setSimProgress(100)
+        setSimPlaying(false)
+        return
+      }
+      setSimProgress(next)
+    }, 180)
+    return () => window.clearInterval(timer)
+  }, [simPlaying, simProgress, setSimPlaying, setSimProgress])
 
   return (
     <div className="bottom-console" role="region" aria-label="控制台">
       <div className="console-bar" role="tablist" aria-label="控制台标签">
         <div className="console-bar-left">
           <h3 className="console-title">控制栏</h3>
-          <button type="button" className="active" role="tab" aria-selected="true">
+          <button
+            type="button"
+            className={activeTab === 'config' ? 'active' : ''}
+            role="tab"
+            aria-selected={activeTab === 'config'}
+            onClick={() => setActiveTab('config')}
+          >
             配置项
+          </button>
+          <button
+            type="button"
+            className={activeTab === 'simulation' ? 'active' : ''}
+            role="tab"
+            aria-selected={activeTab === 'simulation'}
+            onClick={() => setActiveTab('simulation')}
+          >
+            仿真
           </button>
         </div>
         <div className="console-bar-right">
@@ -98,12 +107,6 @@ export function BottomConsole() {
           </button>
           <button type="button" onClick={handleSaveCameraAsDefault}>
             {isSaved ? '已设为默认视角' : '设为默认视角'}
-          </button>
-          <button type="button" onClick={handleSetMaxCameraView}>
-            {isMaxViewLocked ? '解锁最大视角' : '设定最大视角'}
-          </button>
-          <button type="button" onClick={handleToggleGantryAnimation}>
-            {gantryAnimRunning ? '停止场桥/岸桥动画' : '启动场桥/岸桥动画'}
           </button>
           <button type="button" onClick={() => setBasemapModalOpen(true)}>
             底图配置
@@ -121,7 +124,33 @@ export function BottomConsole() {
       {recordingNotice && <div className="console-note">{recordingNotice}</div>}
       {!isCollapsed && (
         <div className="console-body" role="tabpanel">
-          <ConfigFormSections />
+          {activeTab === 'config' ? (
+            <ConfigFormSections />
+          ) : (
+            <div className="simulation-panel">
+              <div className="simulation-panel__head">
+                <strong>靠泊-装卸仿真</strong>
+                <span>{Math.round(simProgress)}%</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={1}
+                value={simProgress}
+                onChange={(e) => setSimProgress(Number(e.target.value))}
+              />
+              <div className="simulation-panel__actions">
+                <button type="button" onClick={() => setSimPlaying(!simPlaying)}>
+                  {simPlaying ? '暂停' : '播放'}
+                </button>
+              </div>
+              <p className="simulation-panel__hint">
+                0 为等待点，0-18 快速入港靠泊，18-50 QC-01/02卸货作业且CY-01增至30箱，50
+                卸货完成即离港；60-90 GC-01/02/03作业，CY-01在60-100缓慢降至0。
+              </p>
+            </div>
+          )}
         </div>
       )}
       <BasemapConfigModal open={basemapModalOpen} onClose={() => setBasemapModalOpen(false)} />

@@ -487,7 +487,6 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
         Ellipsoid.WGS84,
       )
       const eid = basemapId(ent.id)
-      const dynLabel = ent.labelText
       viewer.entities.add({
         id: eid,
         name: ent.name,
@@ -499,21 +498,6 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
           heightReference: heightRef,
           runAnimations: false,
         }),
-        ...(dynLabel
-          ? {
-              label: {
-                text: new ConstantProperty(dynLabel),
-                font: '11px system-ui,sans-serif',
-                fillColor: Color.fromCssColorString('#fbbf24'),
-                outlineColor: Color.BLACK,
-                outlineWidth: 2,
-                style: LabelStyle.FILL_AND_OUTLINE,
-                verticalOrigin: VerticalOrigin.BOTTOM,
-                pixelOffset: new Cartesian2(0, -8),
-                disableDepthTestDistance: Number.POSITIVE_INFINITY,
-              },
-            }
-          : {}),
       })
       track(eid)
       continue
@@ -535,7 +519,6 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
     )
 
     const eid = basemapId(ent.id)
-    const labelText = ent.labelText ?? ent.name
     const shouldRunAnimations = basemapGlbUsesSkeletalAnimations(ent.glbUri)
 
     viewer.entities.add({
@@ -549,21 +532,6 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
         heightReference: heightRef,
         runAnimations: shouldRunAnimations,
       }),
-      ...(labelText
-        ? {
-            label: {
-              text: new ConstantProperty(labelText),
-              font: '11px system-ui,sans-serif',
-              fillColor: Color.fromCssColorString('#c4b5fd'),
-              outlineColor: Color.BLACK,
-              outlineWidth: 2,
-              style: LabelStyle.FILL_AND_OUTLINE,
-              verticalOrigin: VerticalOrigin.BOTTOM,
-              pixelOffset: new Cartesian2(0, -8),
-              disableDepthTestDistance: Number.POSITIVE_INFINITY,
-            },
-          }
-        : {}),
     })
     track(eid)
   }

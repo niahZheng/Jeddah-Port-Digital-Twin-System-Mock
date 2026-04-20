@@ -106,6 +106,7 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
             <div className="yard-zone-cargo-tip__bubble">
               <div className="yard-zone-cargo-tip__title">{st?.shortName ?? code}</div>
               <div className="yard-zone-cargo-tip__pct">{pct}%</div>
+              <div className="yard-zone-cargo-tip__mini">在库 {occupied}</div>
             </div>
           </div>
         )
