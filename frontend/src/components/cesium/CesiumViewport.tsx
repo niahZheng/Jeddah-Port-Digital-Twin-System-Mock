@@ -62,6 +62,14 @@ import { useAuthStore } from '../../store/authStore'
 import { useBasemapStore } from '../../store/basemapStore'
 import { useSimulationStore } from '../../store/simulationStore'
 import type { PortStats, QuayCraneStatus, ShipData } from '../../types/port'
+import { flyToYardPolygonOblique } from '../../cesium/yardCamera'
+import {
+  SIM_BERTH_LABEL_FULL,
+  simBerthFootprintDegrees,
+  simCy01OccupiedTeu,
+} from '../../cesium/simulationYard'
+import { useEffectiveYardZones } from '../../hooks/useEffectiveYardZones'
+import { useYardTwinStore } from '../../store/yardTwinStore'
 import { QuayCraneStatusTips } from './QuayCraneStatusTips'
 import { YardZoneCargoTips } from './YardZoneCargoTips'
 
@@ -270,7 +278,7 @@ export function CesiumViewport() {
     if (!simEnabled) return null
     const p = simProgress
     const statuses = new Map<string, QuayCraneStatus>()
-    const qcBusy = p >= 28 && p < 60
+    const qcBusy = p >= 18 && p < 50
     const gcBusy = p >= 60 && p < 90
     for (let i = 1; i <= 11; i += 1) {
       const code = `QC-${String(i).padStart(2, '0')}`
@@ -293,29 +301,8 @@ export function CesiumViewport() {
     return stats?.quayCranes
   }, [simCraneStatuses, stats?.quayCranes])
 
-  const effectiveYardZones = useMemo(() => {
-    if (!simEnabled) return stats?.yardZones
-    const p = simProgress
-    const cy01Count =
-      p < 28
-        ? 0
-        : p < 60
-          ? Math.round(((p - 28) / 32) * 30)
-          : p < 100
-            ? Math.round((1 - clamp01((p - 60) / 40)) * 30)
-            : 0
-    const base = stats?.yardZones ?? []
-    let replaced = false
-    const next = base.map((z) => {
-      if (String(z.zoneCode).trim().toUpperCase() !== 'CY-01') return z
-      replaced = true
-      return { ...z, occupiedTeu: cy01Count, capacityTeu: 30 }
-    })
-    if (!replaced) {
-      next.push({ zoneCode: 'CY-01', shortName: 'CY-01集货区', occupiedTeu: cy01Count, capacityTeu: 30 })
-    }
-    return next
-  }, [simEnabled, simProgress, stats?.yardZones])
+  const effectiveYardZones = useEffectiveYardZones()
+  const activeYardTwinCode = useYardTwinStore((s) => s.activeZoneCode)
 
   const applySimShipWithState = (
     ship: ShipData,
@@ -783,17 +770,49 @@ export function CesiumViewport() {
     })
     simOverlayEntityIdsRef.current.push(waitingId, waitingLabelId, routeId, departRouteId)
 
+    const berthFootprint = simBerthFootprintDegrees(SIM_BERTH_POINT)
+    const berthHeights = berthFootprint.flatMap((p) => [p.longitude, p.latitude, 0.5])
+    const berthId = 'simulation:berth-zone'
+    const berthLabelId = 'simulation:berth-label'
+    const berthCenterLat =
+      berthFootprint.reduce((s, p) => s + p.latitude, 0) / berthFootprint.length
+    const berthCenterLon =
+      berthFootprint.reduce((s, p) => s + p.longitude, 0) / berthFootprint.length
+    viewer.entities.add({
+      id: berthId,
+      name: SIM_BERTH_LABEL_FULL,
+      polygon: {
+        hierarchy: Cartesian3.fromDegreesArrayHeights(berthHeights),
+        material: Color.fromCssColorString('#0ea5e9').withAlpha(0.22),
+        outline: true,
+        outlineColor: Color.fromCssColorString('#38bdf8'),
+        perPositionHeight: true,
+      },
+    })
+    viewer.entities.add({
+      id: berthLabelId,
+      name: SIM_BERTH_LABEL_FULL,
+      position: Cartesian3.fromDegrees(berthCenterLon, berthCenterLat - 0.000045, 10),
+      label: {
+        text: SIM_BERTH_LABEL_FULL,
+        font: '12px system-ui,sans-serif',
+        fillColor: Color.fromCssColorString('#e0f2fe'),
+        outlineColor: Color.fromCssColorString('#0c4a6e'),
+        outlineWidth: 3,
+        style: LabelStyle.FILL_AND_OUTLINE,
+        verticalOrigin: VerticalOrigin.BOTTOM,
+        pixelOffset: new Cartesian2(0, -6),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+    })
+    simOverlayEntityIdsRef.current.push(berthId, berthLabelId)
+
     const cy01 = basemapEntities.find(
       (e) => e.kind === 'zone' && (e.zoneCode ?? '').trim().toUpperCase() === 'CY-01' && e.zonePoints,
     )
     if (cy01?.zonePoints) {
       const points = cy01.zonePoints
-      const count =
-        simProgress < 45
-          ? 0
-          : simProgress < 65
-            ? Math.round(((simProgress - 45) / 20) * 30)
-            : Math.round((1 - clamp01((simProgress - 65) / 35)) * 30)
+      const count = simCy01OccupiedTeu(simProgress)
       if (count > 0) {
         const minLon = Math.min(...points.map((p) => p.longitude))
         const maxLon = Math.max(...points.map((p) => p.longitude))
@@ -872,6 +891,24 @@ export function CesiumViewport() {
     }
     viewer.scene.requestRender()
   }, [basemapEntities, effectiveCraneStats])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || (viewer as { isDestroyed?: () => boolean }).isDestroyed?.() || !activeYardTwinCode)
+      return
+    const ent = basemapEntities.find(
+      (e) =>
+        e.kind === 'zone' &&
+        (e.zoneCode ?? '').trim().toUpperCase() === activeYardTwinCode &&
+        e.zonePoints &&
+        e.zonePoints.length >= 2,
+    )
+    if (!ent?.zonePoints) return
+    flyToYardPolygonOblique(
+      viewer,
+      ent.zonePoints.map((p) => ({ longitude: p.longitude, latitude: p.latitude })),
+    )
+  }, [activeYardTwinCode, basemapEntities])
 
   return (
     <div className="cesium-viewport-shell">

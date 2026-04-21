@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Cartesian2, Cartesian3, Cartographic } from 'cesium'
 import type { Viewer } from 'cesium'
 import { basemapZoneTipAnchorDegrees } from '../../cesium/basemapEntities'
+import { useYardTwinStore } from '../../store/yardTwinStore'
 import type { BasemapEntity } from '../../types/basemap'
 import type { YardZoneCargoStat } from '../../types/port'
 
@@ -14,6 +15,8 @@ type Props = {
 }
 
 export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
+  const openYardTwin = useYardTwinStore((s) => s.openZone)
+
   const byCode = useMemo(() => {
     const m = new Map<string, YardZoneCargoStat>()
     for (const z of zones ?? []) {
@@ -103,11 +106,20 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
           >
             <span className="yard-zone-cargo-tip__anchor" />
             <span className="yard-zone-cargo-tip__leader" />
-            <div className="yard-zone-cargo-tip__bubble">
+            <button
+              type="button"
+              className="yard-zone-cargo-tip__bubble"
+              title={`${tip} — 点击进入该箱区数字孪生`}
+              onClick={(e) => {
+                e.stopPropagation()
+                openYardTwin(code)
+              }}
+            >
               <div className="yard-zone-cargo-tip__title">{st?.shortName ?? code}</div>
               <div className="yard-zone-cargo-tip__pct">{pct}%</div>
               <div className="yard-zone-cargo-tip__mini">在库 {occupied}</div>
-            </div>
+              <div className="yard-zone-cargo-tip__cta">进入孪生</div>
+            </button>
           </div>
         )
       })}

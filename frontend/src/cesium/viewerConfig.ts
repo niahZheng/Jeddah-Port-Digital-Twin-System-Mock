@@ -2,8 +2,11 @@ import {
   Cartesian3,
   Cartographic,
   Color,
+  Cesium3DTileStyle,
+  CylinderGraphics,
   EllipsoidTerrainProvider,
   HeadingPitchRange,
+  HeadingPitchRoll,
   Ion,
   Math as CesiumMath,
   Matrix4,
@@ -24,12 +27,53 @@ import type { TerrainMode } from '../types/terrain'
 export const JEDDAH_LIGHTHOUSE = {
   longitude: 39.1497,
   latitude: 21.4687,
-  /** 构图用参考高度（米），取塔高约131m 的中上段 */
+  /** 构图用参考高度（米），取塔身中上段（与文献塔高约 133m 对应） */
   lookAtHeightMeters: 95,
+}
+
+/** 维基等公开资料中的塔身高度量级（维基条目标 131.4m；吉尼斯等常写约 133m） */
+export const JEDDAH_LIGHT_PUBLISHED_TOWER_HEIGHT_M = 133
+
+/**
+ * 灯塔「真实比例」示意体与局部 OSM 隐藏（与 OSM 全局竖向拉伸常量解耦）。
+ * 瓦片若缺少 longitude/latitude 元数据则仅叠加圆柱，不隐藏要素。
+ * 默认塔高为 {@link JEDDAH_LIGHT_PUBLISHED_TOWER_HEIGHT_M}；圆柱半径仅作示意（无公开文献底径）。
+ */
+export const lighthouseVisualConfig = {
+  /** 在灯塔经纬度附近隐藏 OSM 建筑，避免与下方圆柱叠盖 */
+  hideOsmBuildingsNearLighthouse: true,
+  /** 经纬度半窗（度），约 0.001°≈100m 量级；过大可能误隐藏邻楼 */
+  hideOsmHalfWindowDegrees: 0.0009,
+  /** 示意圆柱高度（米）；默认与 {@link JEDDAH_LIGHT_PUBLISHED_TOWER_HEIGHT_M} 一致 */
+  structureHeightMeters: JEDDAH_LIGHT_PUBLISHED_TOWER_HEIGHT_M,
+  /** 示意圆柱半径（米），纯视觉占位 */
+  structureRadiusMeters: 14,
+  /** 是否添加圆柱实体 */
+  showStructureEntity: true,
+}
+
+function parseLighthouseStructureHeightMeters(): number {
+  const raw = import.meta.env.VITE_LIGHTHOUSE_STRUCTURE_HEIGHT_M
+  if (raw !== undefined && String(raw).trim() !== '') {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return lighthouseVisualConfig.structureHeightMeters
+}
+
+function parseLighthouseStructureRadiusMeters(): number {
+  const raw = import.meta.env.VITE_LIGHTHOUSE_STRUCTURE_RADIUS_M
+  if (raw !== undefined && String(raw).trim() !== '') {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return n
+  }
+  return lighthouseVisualConfig.structureRadiusMeters
 }
 
 /** OSM 3D 建筑相对地面的竖向拉伸倍数（ENU 竖轴） */
 const OSM_BUILDINGS_HEIGHT_SCALE = 3
+
+const JEDDAH_LIGHTHOUSE_ENTITY_ID = 'jeddah-lighthouse-standalone-visual'
 
 /** 半径大于此值视为全球级 tileset（如 Ion OSM Buildings），不能用 boundingSphere.center 做平移锚点 */
 const OSM_GLOBAL_TILESET_RADIUS_METERS = 1_000_000
@@ -246,6 +290,96 @@ async function alignOsmBuildingsToTerrainThenScale(
   )
 }
 
+/** 灯塔处地表高程（米，椭球高）；排除 OSM 瓦片射线以免拾到建筑顶 */
+async function sampleGroundHeightNearLighthouse(
+  viewer: Viewer,
+  excludeTileset: Cesium3DTileset,
+): Promise<number> {
+  const lo = CesiumMath.toRadians(JEDDAH_LIGHTHOUSE.longitude)
+  const la = CesiumMath.toRadians(JEDDAH_LIGHTHOUSE.latitude)
+  let hTerrain: number | undefined
+  if (viewer.scene.sampleHeightSupported) {
+    const positions = [Cartographic.fromRadians(lo, la, 0, new Cartographic())]
+    try {
+      await viewer.scene.sampleHeightMostDetailed(positions, [excludeTileset])
+      const h = positions[0]?.height
+      if (typeof h === 'number' && Number.isFinite(h)) hTerrain = h
+    } catch {
+      /* 地形瓦片未就绪等 */
+    }
+  }
+  if (hTerrain === undefined) {
+    hTerrain = await waitForGlobeHeight(viewer, lo, la, 120)
+  }
+  if (hTerrain === undefined) {
+    try {
+      const positions = [Cartographic.fromRadians(lo, la, 0, new Cartographic())]
+      await sampleTerrainMostDetailed(viewer.scene.globe.terrainProvider, positions)
+      const h = positions[0]?.height
+      if (typeof h === 'number' && Number.isFinite(h)) hTerrain = h
+    } catch {
+      /* 椭球地形等 */
+    }
+  }
+  return typeof hTerrain === 'number' && Number.isFinite(hTerrain) ? hTerrain : 0
+}
+
+/**
+ * 在全局 OSM 竖向缩放之外单独控制灯塔体量：局部隐藏 Ion OSM 要素并叠加未随 tileset.modelMatrix 缩放的圆柱示意体。
+ * 依赖瓦片 batch 中的 `latitude` / `longitude`（Cesium OSM Buildings 常见字段）；若无元数据则只加圆柱。
+ */
+export async function applyLighthouseVisualOverride(
+  viewer: Viewer,
+  tileset: Cesium3DTileset,
+): Promise<void> {
+  const existing = viewer.entities.getById(JEDDAH_LIGHTHOUSE_ENTITY_ID)
+  if (existing) viewer.entities.remove(existing)
+
+  if (lighthouseVisualConfig.hideOsmBuildingsNearLighthouse) {
+    const lon = JEDDAH_LIGHTHOUSE.longitude
+    const lat = JEDDAH_LIGHTHOUSE.latitude
+    const w = lighthouseVisualConfig.hideOsmHalfWindowDegrees
+    const minLat = lat - w
+    const maxLat = lat + w
+    const minLon = lon - w
+    const maxLon = lon + w
+    const showExpr = `!defined(\${latitude}) || !defined(\${longitude}) || !((${minLat} < \${latitude}) && (\${latitude} < ${maxLat}) && (${minLon} < \${longitude}) && (\${longitude} < ${maxLon}))`
+    tileset.style = new Cesium3DTileStyle({ show: showExpr })
+  }
+
+  if (!lighthouseVisualConfig.showStructureEntity) {
+    viewer.scene.requestRender()
+    return
+  }
+
+  const h0 = await sampleGroundHeightNearLighthouse(viewer, tileset)
+  const len = parseLighthouseStructureHeightMeters()
+  const r = parseLighthouseStructureRadiusMeters()
+  const { longitude, latitude } = JEDDAH_LIGHTHOUSE
+  const centerH = h0 + len / 2
+  const position = Cartesian3.fromDegrees(longitude, latitude, centerH)
+  const orientation = Transforms.headingPitchRollQuaternion(
+    position,
+    new HeadingPitchRoll(0, 0, 0),
+    viewer.scene.globe.ellipsoid,
+  )
+  viewer.entities.add({
+    id: JEDDAH_LIGHTHOUSE_ENTITY_ID,
+    name: 'Jeddah Light (示意)',
+    position,
+    orientation,
+    cylinder: new CylinderGraphics({
+      length: len,
+      topRadius: r,
+      bottomRadius: r,
+      material: Color.fromCssColorString('#e8e8e8'),
+      outline: true,
+      outlineColor: Color.fromCssColorString('#6b6b6b'),
+    }),
+  })
+  viewer.scene.requestRender()
+}
+
 /** 斜视灯塔：相对目标的方位角、俯仰角（-45°）、距离（米） */
 const LIGHTHOUSE_ORBIT = {
   headingDegrees: 48,
@@ -403,6 +537,7 @@ export async function applyCesiumGeographicModel(viewer: Viewer): Promise<Cesium
   const osmBuildings = await createOsmBuildingsAsync()
   viewer.scene.primitives.add(osmBuildings)
   await alignOsmBuildingsToTerrainThenScale(viewer, osmBuildings, OSM_BUILDINGS_HEIGHT_SCALE)
+  await applyLighthouseVisualOverride(viewer, osmBuildings)
 
   // 确保底图仍然是街道图
   if (viewer.imageryLayers.length === 0) {

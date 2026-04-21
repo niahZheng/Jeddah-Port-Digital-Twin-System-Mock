@@ -7,6 +7,8 @@ import { PassengerDispatcherWorkspace } from '../passenger-dispatcher/PassengerD
 import { OpsEngineerOverviewWidgets } from '../ops-engineer/overview/OpsEngineerOverviewWidgets'
 import { OpsEngineerWorkspace } from '../ops-engineer/OpsEngineerWorkspace'
 import { CesiumViewport } from '../cesium/CesiumViewport'
+import { YardDigitalTwinOverlay } from '../yard/YardDigitalTwinOverlay'
+import { useYardTwinStore } from '../../store/yardTwinStore'
 import { BottomConsole } from './BottomConsole'
 import { OverviewRightSettingsRail } from './OverviewRightSettingsRail'
 import { LeftPanel, RightPanel } from '../widgets/StatsPanel'
@@ -26,6 +28,7 @@ const OPS_ENGINEER = 'ops_engineer'
 
 export function MainWorkspace(props: Props) {
   const { activeNav, twinHomeLabel, roleKey } = props
+  const yardTwinZone = useYardTwinStore((s) => s.activeZoneCode)
 
   if (roleKey === FREIGHT_DISPATCHER) {
     const isFreightHome = activeNav === twinHomeLabel
@@ -35,6 +38,7 @@ export function MainWorkspace(props: Props) {
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
               <CesiumViewport />
+              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
             </div>
             <OverviewRightSettingsRail
               overviewDrawers={<FreightDispatcherOverviewWidgets />}
@@ -59,6 +63,7 @@ export function MainWorkspace(props: Props) {
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
               <CesiumViewport />
+              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
             </div>
             <OverviewRightSettingsRail
               overviewDrawers={<PassengerDispatcherOverviewWidgets />}
@@ -83,6 +88,7 @@ export function MainWorkspace(props: Props) {
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
               <CesiumViewport />
+              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
             </div>
             <OverviewRightSettingsRail overviewDrawers={<OpsEngineerOverviewWidgets />} />
           </div>
@@ -105,6 +111,7 @@ export function MainWorkspace(props: Props) {
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
               <CesiumViewport />
+              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
             </div>
             <OverviewRightSettingsRail overviewDrawers={<DirectorOverviewWidgets />} />
           </div>
@@ -128,6 +135,7 @@ export function MainWorkspace(props: Props) {
           <LeftPanel />
           <div className="stage">
             <CesiumViewport />
+            {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
           </div>
           <RightPanel />
         </div>
