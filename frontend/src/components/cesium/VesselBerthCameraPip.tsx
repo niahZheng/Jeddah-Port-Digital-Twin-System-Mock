@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Entity, ModelGraphics, Viewer } from 'cesium'
-import { useSimulationStore } from '../../store/simulationStore'
-import { useScreenStore } from '../../store/screenStore'
+import { findQuayCraneBasemapByCode } from '../../cesium/craneBasemap'
+import { applyQuayCraneCabinCameraTowardShip } from '../../cesium/quayCranePipCamera'
 import { simCy01Phase, simCy01PhaseLabelZh } from '../../cesium/simulationYard'
 import { SIM_VESSEL_DISPLAY_NAME, SIM_VESSEL_MMSI } from '../../cesium/simVessel'
 import { applyVesselPipChaseCamera45Deg } from '../../cesium/vesselPipCamera'
+import { useBasemapStore } from '../../store/basemapStore'
+import { pipViewTargetKey, usePipViewStore } from '../../store/pipViewStore'
+import { useSimulationStore } from '../../store/simulationStore'
+import { useScreenStore } from '../../store/screenStore'
 import {
   applyConfiguredBasemap,
   createViewer,
@@ -64,18 +68,30 @@ export function VesselBerthCameraPip({ mainViewer }: Props) {
   const [now, setNow] = useState(() => new Date())
   const simEnabled = useSimulationStore((s) => s.enabled)
   const simProgress = useSimulationStore((s) => s.progress)
+  const pipTarget = usePipViewStore((s) => s.target)
+  const pipTargetKeyVal = usePipViewStore((s) => pipViewTargetKey(s.target))
+  const setPipViewVessel = usePipViewStore((s) => s.setPipViewVessel)
+  const setPipViewQuayCrane = usePipViewStore((s) => s.setPipViewQuayCrane)
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 1000)
     return () => window.clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    pipAutoFollowRef.current = true
+  }, [pipTargetKeyVal])
+
   const phaseHint = useMemo(() => {
+    const viewHint =
+      pipTarget === 'vessel'
+        ? '视角：船艏 45° 追焦'
+        : `视角：${pipTarget.code} 移动机舱俯视 · 随船瞄准`
     const camHint =
-      '顶栏或 Shift+左键拖动画中画 · 左键旋转 · 滚轮缩放 · 点「随船」恢复追焦'
-    if (!simEnabled) return camHint
-    return `${simCy01PhaseLabelZh(simCy01Phase(simProgress))} · ${camHint}`
-  }, [simEnabled, simProgress])
+      '顶栏或 Shift+左键拖动画中画 · 左键旋转 · 滚轮缩放 ·「追随」恢复自动机位'
+    if (!simEnabled) return `${viewHint} · ${camHint}`
+    return `${simCy01PhaseLabelZh(simCy01Phase(simProgress))} · ${viewHint} · ${camHint}`
+  }, [simEnabled, simProgress, pipTarget])
 
   dockRef.current = dock
 
@@ -245,7 +261,31 @@ export function VesselBerthCameraPip({ mainViewer }: Props) {
       if (pipAutoFollowRef.current) {
         pipApplyingChaseRef.current = true
         try {
-          applyVesselPipChaseCamera45Deg(p, pos, headingDeg)
+          const target = usePipViewStore.getState().target
+          if (target === 'vessel') {
+            applyVesselPipChaseCamera45Deg(p, pos, headingDeg)
+          } else {
+            const crane = findQuayCraneBasemapByCode(
+              useBasemapStore.getState().entities,
+              target.code,
+            )
+            if (
+              crane?.longitude != null &&
+              crane.latitude != null &&
+              Number.isFinite(crane.longitude) &&
+              Number.isFinite(crane.latitude)
+            ) {
+              applyQuayCraneCabinCameraTowardShip(
+                p,
+                crane.longitude,
+                crane.latitude,
+                crane.headingDeg,
+                pos,
+              )
+            } else {
+              applyVesselPipChaseCamera45Deg(p, pos, headingDeg)
+            }
+          }
         } finally {
           pipApplyingChaseRef.current = false
         }
@@ -274,6 +314,12 @@ export function VesselBerthCameraPip({ mainViewer }: Props) {
 
   const timeStr = now.toLocaleTimeString('zh-CN', { hour12: false })
   const name = SIM_VESSEL_DISPLAY_NAME
+  const osdTitle =
+    pipTarget === 'vessel' ? name : `${pipTarget.code} · 移动机舱镜头`
+  const ariaPip =
+    pipTarget === 'vessel'
+      ? `${name} 画中画（船艏追焦）`
+      : `${pipTarget.code} 移动机舱俯视画中画`
 
   return (
     <div
@@ -281,22 +327,41 @@ export function VesselBerthCameraPip({ mainViewer }: Props) {
       className={`vessel-pip${isDragging ? ' vessel-pip--dragging' : ''}`}
       style={{ left: dock.left, top: dock.top }}
       role="img"
-      aria-label={`${name} 实时镜头（Cesium 真模型）`}
+      aria-label={ariaPip}
     >
       <div className="vessel-pip__chrome" onMouseDown={onChromeMouseDown}>
         <span className="vessel-pip__live" aria-hidden>
           <span className="vessel-pip__live-dot" /> LIVE
         </span>
-        <span className="vessel-pip__cam">CAM-3D · 可转/缩放</span>
+        <div className="vessel-pip__tabs">
+          <button
+            type="button"
+            className={`vessel-pip__tab${pipTarget === 'vessel' ? ' vessel-pip__tab--on' : ''}`}
+            title="船艏 45° 追焦"
+            onClick={() => setPipViewVessel()}
+          >
+            船
+          </button>
+          <button
+            type="button"
+            className={`vessel-pip__tab${
+              pipTarget !== 'vessel' && pipTarget.code === 'QC-01' ? ' vessel-pip__tab--on' : ''
+            }`}
+            title="QC-01 移动机舱俯视（约 45°），对准船舶"
+            onClick={() => setPipViewQuayCrane('QC-01')}
+          >
+            QC-01
+          </button>
+        </div>
         <button
           type="button"
           className="vessel-pip__follow"
-          title="恢复自动随船 45° 追焦"
+          title="恢复当前视角的自动追随（每帧对准船舶）"
           onClick={() => {
             pipAutoFollowRef.current = true
           }}
         >
-          随船
+          追随
         </button>
       </div>
       <div className="vessel-pip__frame" onMouseDownCapture={onFrameMouseDownCapture}>
@@ -304,7 +369,7 @@ export function VesselBerthCameraPip({ mainViewer }: Props) {
         <div className="vessel-pip__grain" aria-hidden />
         <div className="vessel-pip__scan" aria-hidden />
         <div className="vessel-pip__osd">
-          <span className="vessel-pip__osd-name">{name}</span>
+          <span className="vessel-pip__osd-name">{osdTitle}</span>
           <span className="vessel-pip__osd-time">{timeStr}</span>
           <span className="vessel-pip__osd-hint">{phaseHint}</span>
         </div>

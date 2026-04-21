@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Cartesian2, Cartesian3 } from 'cesium'
 import type { Viewer } from 'cesium'
+import { pickQuayCraneCode } from '../../cesium/craneBasemap'
+import { usePipViewStore } from '../../store/pipViewStore'
 import type { BasemapEntity } from '../../types/basemap'
 import type { QuayCraneStat } from '../../types/port'
+
+const PIP_CRANE_SWITCH_CODE = 'QC-01'
 
 type Props = {
   viewer: Viewer | null
@@ -10,14 +14,9 @@ type Props = {
   cranes: QuayCraneStat[] | undefined
 }
 
-function pickCraneCode(ent: BasemapEntity): string | null {
-  const fromLabel = (ent.labelText ?? '').trim().toUpperCase()
-  if (/^(QC|GC)-\d{2}$/.test(fromLabel)) return fromLabel
-  const m = (ent.name ?? '').toUpperCase().match(/(QC|GC)-\d{2}/)
-  return m ? m[0]! : null
-}
-
 export function QuayCraneStatusTips({ viewer, basemapEntities, cranes }: Props) {
+  const setPipQuayCrane = usePipViewStore((s) => s.setPipViewQuayCrane)
+
   const craneStatusByCode = useMemo(() => {
     const m = new Map<string, QuayCraneStat['status']>()
     for (const c of cranes ?? []) {
@@ -35,7 +34,7 @@ export function QuayCraneStatusTips({ viewer, basemapEntities, cranes }: Props) 
             e.visible &&
             Boolean(e.glbUri?.includes('crane_harbour') || e.glbUri?.includes('gantry_crane')),
         )
-        .map((e) => ({ entity: e, code: pickCraneCode(e) }))
+        .map((e) => ({ entity: e, code: pickQuayCraneCode(e) }))
         .filter((x): x is { entity: BasemapEntity; code: string } => Boolean(x.code)),
     [basemapEntities],
   )
@@ -101,6 +100,19 @@ export function QuayCraneStatusTips({ viewer, basemapEntities, cranes }: Props) 
                   <span className="quay-crane-status-tip__alert"> !!!</span>
                 ) : null}
               </div>
+              {code === PIP_CRANE_SWITCH_CODE ? (
+                <button
+                  type="button"
+                  className="quay-crane-status-tip__pip"
+                  title="切换大屏画中画为 QC-01 移动机舱俯视（约 45°）"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setPipQuayCrane(PIP_CRANE_SWITCH_CODE)
+                  }}
+                >
+                  摄像头→画中画
+                </button>
+              ) : null}
             </div>
           </div>
         )
