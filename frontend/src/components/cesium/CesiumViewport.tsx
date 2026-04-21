@@ -68,14 +68,15 @@ import {
   simBerthFootprintDegrees,
   simCy01OccupiedTeu,
 } from '../../cesium/simulationYard'
+import { SIM_VESSEL_MMSI } from '../../cesium/simVessel'
 import { useEffectiveYardZones } from '../../hooks/useEffectiveYardZones'
 import { selectTwinZoneCode, selectVideoZoneCode, useYardPanelStore } from '../../store/yardPanelStore'
 import { QuayCraneStatusTips } from './QuayCraneStatusTips'
+import { VesselBerthCameraPip } from './VesselBerthCameraPip'
 import { YardZoneCargoTips } from './YardZoneCargoTips'
 
 /** 每条船上次用于三维的 Z 轴偏移；变化时 remove+add 实体，避免 Cesium Model 仍用旧 modelMatrix */
 const lastShipDraftByMmsi = new Map<string, number>()
-const SIM_SHIP_MMSI = '403123456'
 const SIM_WAIT_POINT = {
   longitude: 39.152757,
   latitude: 21.466392,
@@ -310,7 +311,7 @@ export function CesiumViewport() {
     enabled: boolean,
     progress: number,
   ): ShipData => {
-    if (!enabled || ship.mmsi !== SIM_SHIP_MMSI) return ship
+    if (!enabled || ship.mmsi !== SIM_VESSEL_MMSI) return ship
     const p = progress
     if (p <= 0) {
       return {
@@ -942,6 +943,7 @@ export function CesiumViewport() {
         basemapEntities={basemapEntities}
         cranes={effectiveCraneStats}
       />
+      <VesselBerthCameraPip mainViewer={mapViewer} />
       <div
         className="cesium-compass"
         role="img"
