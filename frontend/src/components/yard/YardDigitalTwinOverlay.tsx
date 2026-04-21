@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useBasemapStore } from '../../store/basemapStore'
 import { useSimulationStore } from '../../store/simulationStore'
-import { useYardTwinStore } from '../../store/yardTwinStore'
+import { selectTwinZoneCode, useYardPanelStore } from '../../store/yardPanelStore'
 import { useEffectiveYardZones } from '../../hooks/useEffectiveYardZones'
 import {
   SIM_BERTH_LABEL_SHORT,
@@ -54,8 +54,9 @@ function filledSlotCount(bays: number, rows: number, occupiedTeu: number, capaci
 }
 
 export function YardDigitalTwinOverlay() {
-  const activeZoneCode = useYardTwinStore((s) => s.activeZoneCode)
-  const close = useYardTwinStore((s) => s.close)
+  const activeZoneCode = useYardPanelStore(selectTwinZoneCode)
+  const close = useYardPanelStore((s) => s.close)
+  const openVideo = useYardPanelStore((s) => s.openVideo)
   const basemapEntities = useBasemapStore((s) => s.entities)
   const zones = useEffectiveYardZones()
   const simEnabled = useSimulationStore((s) => s.enabled)
@@ -219,9 +220,20 @@ export function YardDigitalTwinOverlay() {
               {isCy01Sim ? ` · 仿真泊位 ${SIM_BERTH_LABEL_SHORT} → 本区` : null}
             </p>
           </div>
-          <button type="button" className="yard-twin-close" onClick={close}>
-            退出孪生
-          </button>
+          <div className="yard-twin-header__actions">
+            <button
+              type="button"
+              className="yard-twin-video"
+              onClick={() => {
+                if (activeZoneCode) openVideo(activeZoneCode)
+              }}
+            >
+              实时视频
+            </button>
+            <button type="button" className="yard-twin-close" onClick={close}>
+              退出孪生
+            </button>
+          </div>
         </header>
 
         {isCy01Sim ? (

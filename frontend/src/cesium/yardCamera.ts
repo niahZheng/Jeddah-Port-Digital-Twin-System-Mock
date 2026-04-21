@@ -38,3 +38,14 @@ export function flyToYardPolygonOblique(
     ),
   })
 }
+
+/**
+ * 实时视频入口：与数字孪生相同的约 45° 斜视俯拍（同 flyToYardPolygonOblique），便于画面对齐。
+ */
+export function flyToYardPolygonCctvView(
+  viewer: Viewer,
+  ring: LonLat[],
+  options?: { duration?: number },
+): void {
+  flyToYardPolygonOblique(viewer, ring, options)
+}

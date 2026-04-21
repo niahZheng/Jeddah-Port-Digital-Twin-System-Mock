@@ -8,7 +8,8 @@ import { OpsEngineerOverviewWidgets } from '../ops-engineer/overview/OpsEngineer
 import { OpsEngineerWorkspace } from '../ops-engineer/OpsEngineerWorkspace'
 import { CesiumViewport } from '../cesium/CesiumViewport'
 import { YardDigitalTwinOverlay } from '../yard/YardDigitalTwinOverlay'
-import { useYardTwinStore } from '../../store/yardTwinStore'
+import { YardLiveVideoOverlay } from '../yard/YardLiveVideoOverlay'
+import { selectTwinZoneCode, selectVideoZoneCode, useYardPanelStore } from '../../store/yardPanelStore'
 import { BottomConsole } from './BottomConsole'
 import { OverviewRightSettingsRail } from './OverviewRightSettingsRail'
 import { LeftPanel, RightPanel } from '../widgets/StatsPanel'
@@ -28,7 +29,8 @@ const OPS_ENGINEER = 'ops_engineer'
 
 export function MainWorkspace(props: Props) {
   const { activeNav, twinHomeLabel, roleKey } = props
-  const yardTwinZone = useYardTwinStore((s) => s.activeZoneCode)
+  const yardTwinZone = useYardPanelStore(selectTwinZoneCode)
+  const yardVideoZone = useYardPanelStore(selectVideoZoneCode)
 
   if (roleKey === FREIGHT_DISPATCHER) {
     const isFreightHome = activeNav === twinHomeLabel
@@ -39,6 +41,7 @@ export function MainWorkspace(props: Props) {
             <div className="stage">
               <CesiumViewport />
               {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
             </div>
             <OverviewRightSettingsRail
               overviewDrawers={<FreightDispatcherOverviewWidgets />}
@@ -64,6 +67,7 @@ export function MainWorkspace(props: Props) {
             <div className="stage">
               <CesiumViewport />
               {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
             </div>
             <OverviewRightSettingsRail
               overviewDrawers={<PassengerDispatcherOverviewWidgets />}
@@ -89,6 +93,7 @@ export function MainWorkspace(props: Props) {
             <div className="stage">
               <CesiumViewport />
               {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
             </div>
             <OverviewRightSettingsRail overviewDrawers={<OpsEngineerOverviewWidgets />} />
           </div>
@@ -112,6 +117,7 @@ export function MainWorkspace(props: Props) {
             <div className="stage">
               <CesiumViewport />
               {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
             </div>
             <OverviewRightSettingsRail overviewDrawers={<DirectorOverviewWidgets />} />
           </div>
@@ -136,6 +142,7 @@ export function MainWorkspace(props: Props) {
           <div className="stage">
             <CesiumViewport />
             {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+            {yardVideoZone ? <YardLiveVideoOverlay /> : null}
           </div>
           <RightPanel />
         </div>

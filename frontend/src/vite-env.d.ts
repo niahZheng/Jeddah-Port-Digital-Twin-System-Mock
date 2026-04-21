@@ -9,6 +9,8 @@ interface ImportMetaEnv {
   /** OSM 3D 建筑沿当地向地心下沉的米数；不设时默认约 10m（椭球与 world 相同） */
   readonly VITE_OSM_BUILDINGS_SINK_M?: string
   readonly VITE_API_BASE?: string
+  /** 可选：堆场实时视频演示地址（HLS/MP4 等浏览器可直接播放的 URL） */
+  readonly VITE_YARD_VIDEO_DEMO_URL?: string
 }
 
 interface ImportMeta {

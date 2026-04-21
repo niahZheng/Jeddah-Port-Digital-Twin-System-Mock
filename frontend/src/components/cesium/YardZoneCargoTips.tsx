@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { Cartesian2, Cartesian3, Cartographic } from 'cesium'
 import type { Viewer } from 'cesium'
 import { basemapZoneTipAnchorDegrees } from '../../cesium/basemapEntities'
-import { useYardTwinStore } from '../../store/yardTwinStore'
+import { useYardPanelStore } from '../../store/yardPanelStore'
 import type { BasemapEntity } from '../../types/basemap'
 import type { YardZoneCargoStat } from '../../types/port'
 
@@ -15,7 +15,8 @@ type Props = {
 }
 
 export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
-  const openYardTwin = useYardTwinStore((s) => s.openZone)
+  const openYardTwin = useYardPanelStore((s) => s.openTwin)
+  const openYardVideo = useYardPanelStore((s) => s.openVideo)
 
   const byCode = useMemo(() => {
     const m = new Map<string, YardZoneCargoStat>()
@@ -106,20 +107,35 @@ export function YardZoneCargoTips({ viewer, basemapEntities, zones }: Props) {
           >
             <span className="yard-zone-cargo-tip__anchor" />
             <span className="yard-zone-cargo-tip__leader" />
-            <button
-              type="button"
-              className="yard-zone-cargo-tip__bubble"
-              title={`${tip} — 点击进入该箱区数字孪生`}
-              onClick={(e) => {
-                e.stopPropagation()
-                openYardTwin(code)
-              }}
-            >
+            <div className="yard-zone-cargo-tip__panel" title={tip}>
               <div className="yard-zone-cargo-tip__title">{st?.shortName ?? code}</div>
               <div className="yard-zone-cargo-tip__pct">{pct}%</div>
               <div className="yard-zone-cargo-tip__mini">在库 {occupied}</div>
-              <div className="yard-zone-cargo-tip__cta">进入孪生</div>
-            </button>
+              <div className="yard-zone-cargo-tip__actions">
+                <button
+                  type="button"
+                  className="yard-zone-cargo-tip__btn yard-zone-cargo-tip__btn--twin"
+                  title={`${tip} — 数字孪生`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openYardTwin(code)
+                  }}
+                >
+                  孪生
+                </button>
+                <button
+                  type="button"
+                  className="yard-zone-cargo-tip__btn yard-zone-cargo-tip__btn--video"
+                  title={`${tip} — 该箱区枪机实时画面（演示）`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    openYardVideo(code)
+                  }}
+                >
+                  实时视频
+                </button>
+              </div>
+            </div>
           </div>
         )
       })}

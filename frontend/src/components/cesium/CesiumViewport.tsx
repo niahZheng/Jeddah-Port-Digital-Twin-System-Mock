@@ -62,14 +62,14 @@ import { useAuthStore } from '../../store/authStore'
 import { useBasemapStore } from '../../store/basemapStore'
 import { useSimulationStore } from '../../store/simulationStore'
 import type { PortStats, QuayCraneStatus, ShipData } from '../../types/port'
-import { flyToYardPolygonOblique } from '../../cesium/yardCamera'
+import { flyToYardPolygonCctvView, flyToYardPolygonOblique } from '../../cesium/yardCamera'
 import {
   SIM_BERTH_LABEL_FULL,
   simBerthFootprintDegrees,
   simCy01OccupiedTeu,
 } from '../../cesium/simulationYard'
 import { useEffectiveYardZones } from '../../hooks/useEffectiveYardZones'
-import { useYardTwinStore } from '../../store/yardTwinStore'
+import { selectTwinZoneCode, selectVideoZoneCode, useYardPanelStore } from '../../store/yardPanelStore'
 import { QuayCraneStatusTips } from './QuayCraneStatusTips'
 import { YardZoneCargoTips } from './YardZoneCargoTips'
 
@@ -302,7 +302,8 @@ export function CesiumViewport() {
   }, [simCraneStatuses, stats?.quayCranes])
 
   const effectiveYardZones = useEffectiveYardZones()
-  const activeYardTwinCode = useYardTwinStore((s) => s.activeZoneCode)
+  const activeYardTwinCode = useYardPanelStore(selectTwinZoneCode)
+  const activeYardVideoCode = useYardPanelStore(selectVideoZoneCode)
 
   const applySimShipWithState = (
     ship: ShipData,
@@ -909,6 +910,24 @@ export function CesiumViewport() {
       ent.zonePoints.map((p) => ({ longitude: p.longitude, latitude: p.latitude })),
     )
   }, [activeYardTwinCode, basemapEntities])
+
+  useEffect(() => {
+    const viewer = viewerRef.current
+    if (!viewer || (viewer as { isDestroyed?: () => boolean }).isDestroyed?.() || !activeYardVideoCode)
+      return
+    const ent = basemapEntities.find(
+      (e) =>
+        e.kind === 'zone' &&
+        (e.zoneCode ?? '').trim().toUpperCase() === activeYardVideoCode &&
+        e.zonePoints &&
+        e.zonePoints.length >= 2,
+    )
+    if (!ent?.zonePoints) return
+    flyToYardPolygonCctvView(
+      viewer,
+      ent.zonePoints.map((p) => ({ longitude: p.longitude, latitude: p.latitude })),
+    )
+  }, [activeYardVideoCode, basemapEntities])
 
   return (
     <div className="cesium-viewport-shell">
