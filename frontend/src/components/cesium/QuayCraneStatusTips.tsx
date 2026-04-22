@@ -43,11 +43,13 @@ export function QuayCraneStatusTips({ viewer, basemapEntities, cranes }: Props) 
   const tipElsRef = useRef<Map<string, HTMLDivElement | null>>(new Map())
 
   useEffect(() => {
-    if (!viewer || (viewer as { isDestroyed?: () => boolean }).isDestroyed?.()) return
+    const v = viewer
+    if (!v || (v as { isDestroyed?: () => boolean }).isDestroyed?.() || !v.scene) return
 
     const onPostRender = () => {
+      if ((v as { isDestroyed?: () => boolean }).isDestroyed?.() || !v.scene) return
       const c2 = scratch.current
-      const canvas = viewer.scene.canvas
+      const canvas = v.scene.canvas
       const sx = canvas.clientWidth / Math.max(1, canvas.width)
       const sy = canvas.clientHeight / Math.max(1, canvas.height)
       for (const { entity } of targets) {
@@ -57,7 +59,7 @@ export function QuayCraneStatusTips({ viewer, basemapEntities, cranes }: Props) 
         const lat = entity.latitude ?? 0
         const h = (entity.height ?? 0) + 20
         const cart = Cartesian3.fromDegrees(lon, lat, h)
-        const ok = viewer.scene.cartesianToCanvasCoordinates(cart, c2)
+        const ok = v.scene.cartesianToCanvasCoordinates(cart, c2)
         if (!ok) {
           el.style.visibility = 'hidden'
           continue
@@ -68,9 +70,13 @@ export function QuayCraneStatusTips({ viewer, basemapEntities, cranes }: Props) 
       }
     }
 
-    viewer.scene.postRender.addEventListener(onPostRender)
+    v.scene.postRender.addEventListener(onPostRender)
     return () => {
-      viewer.scene.postRender.removeEventListener(onPostRender)
+      try {
+        v.scene?.postRender?.removeEventListener(onPostRender)
+      } catch {
+        /* Viewer 已销毁或 StrictMode 双调用边界 */
+      }
     }
   }, [viewer, targets])
 

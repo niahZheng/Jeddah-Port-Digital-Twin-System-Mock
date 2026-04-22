@@ -639,13 +639,25 @@ export function CesiumViewport() {
     return () => {
       unsubBasemap()
       unsubWs()
-      viewer.scene.postRender.removeEventListener(updateCompass)
-      clickHandler.destroy()
+      try {
+        viewer.scene?.postRender?.removeEventListener(updateCompass)
+      } catch {
+        /* 已销毁 */
+      }
+      try {
+        clickHandler.destroy()
+      } catch {
+        /* noop */
+      }
       window.removeEventListener(SET_DEFAULT_CAMERA_EVENT, onSetDefaultCamera)
       window.removeEventListener(START_COORD_RECORDING_EVENT, onStartCoordRecording)
       window.removeEventListener(STOP_COORD_RECORDING_EVENT, onStopCoordRecording)
       window.removeEventListener(SHIP_DRAFTS_UPDATED_EVENT, onShipDraftsUpdated)
-      viewer.camera.changed.removeEventListener(onCameraChanged)
+      try {
+        viewer.camera.changed.removeEventListener(onCameraChanged)
+      } catch {
+        /* noop */
+      }
       if (hoveredRestoreRef.current) {
         hoveredRestoreRef.current()
       }
@@ -662,8 +674,8 @@ export function CesiumViewport() {
   }, [setShips, updateShip, setStats, setWsConnected, token])
 
   useEffect(() => {
-    const viewer = viewerRef.current
-    if (!viewer) return
+    const viewer = mapViewer
+    if (!viewer || (viewer as { isDestroyed?: () => boolean }).isDestroyed?.()) return
 
     void (async () => {
       try {
@@ -677,7 +689,7 @@ export function CesiumViewport() {
         console.error('Failed to load 3D buildings:', error)
       }
     })()
-  }, [])
+  }, [mapViewer])
 
   useEffect(() => {
     const viewer = viewerRef.current
