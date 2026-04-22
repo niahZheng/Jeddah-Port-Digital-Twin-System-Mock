@@ -214,7 +214,7 @@ export function applyBasemapEntities(viewer: Viewer, entities: BasemapEntity[]) 
   )
 
   let patrolConfigured = false
-  const pathColors = ['#f59e0b', '#22d3ee', '#a78bfa']
+  const pathColors = ['#f59e0b', '#22d3ee', '#a78bfa', '#34d399', '#f472b6', '#818cf8']
 
   const track = (id: string) => {
     lastManagedBasemapIds.push(id)

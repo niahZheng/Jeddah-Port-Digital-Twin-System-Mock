@@ -174,11 +174,18 @@ function seedBasemapIfEmpty(database: Database.Database) {
     if (truckPatrol) {
       database
         .prepare(
-          'UPDATE basemap_entities SET patrol_truck_count = @patrol_truck_count, updated_at = @updated_at WHERE id = @id',
+          `UPDATE basemap_entities SET
+            patrol_truck_count = @patrol_truck_count,
+            patrol_segment_seconds = @patrol_segment_seconds,
+            patrol_stagger_seconds = @patrol_stagger_seconds,
+            updated_at = @updated_at
+          WHERE id = @id`,
         )
         .run({
           id: truckPatrol.id,
           patrol_truck_count: truckPatrol.patrol_truck_count,
+          patrol_segment_seconds: truckPatrol.patrol_segment_seconds,
+          patrol_stagger_seconds: truckPatrol.patrol_stagger_seconds,
           updated_at: new Date().toISOString(),
         })
     }
