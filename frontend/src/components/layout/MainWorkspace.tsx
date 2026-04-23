@@ -11,6 +11,7 @@ import { YardDigitalTwinOverlay } from '../yard/YardDigitalTwinOverlay'
 import { YardLiveVideoOverlay } from '../yard/YardLiveVideoOverlay'
 import { selectTwinZoneCode, selectVideoZoneCode, useYardPanelStore } from '../../store/yardPanelStore'
 import { BottomConsole } from './BottomConsole'
+import { TwinHomeMapShell } from './TwinHomeMapShell'
 import { OverviewRightSettingsRail } from './OverviewRightSettingsRail'
 import { LeftPanel, RightPanel } from '../widgets/StatsPanel'
 
@@ -39,9 +40,11 @@ export function MainWorkspace(props: Props) {
         <div className="screen-body">
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
-              <CesiumViewport />
-              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
-              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              <TwinHomeMapShell>
+                <CesiumViewport />
+                {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+                {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              </TwinHomeMapShell>
             </div>
             <OverviewRightSettingsRail
               overviewDrawers={<FreightDispatcherOverviewWidgets />}
@@ -65,9 +68,11 @@ export function MainWorkspace(props: Props) {
         <div className="screen-body">
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
-              <CesiumViewport />
-              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
-              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              <TwinHomeMapShell>
+                <CesiumViewport />
+                {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+                {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              </TwinHomeMapShell>
             </div>
             <OverviewRightSettingsRail
               overviewDrawers={<PassengerDispatcherOverviewWidgets />}
@@ -91,9 +96,11 @@ export function MainWorkspace(props: Props) {
         <div className="screen-body">
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
-              <CesiumViewport />
-              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
-              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              <TwinHomeMapShell>
+                <CesiumViewport />
+                {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+                {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              </TwinHomeMapShell>
             </div>
             <OverviewRightSettingsRail overviewDrawers={<OpsEngineerOverviewWidgets />} />
           </div>
@@ -115,9 +122,11 @@ export function MainWorkspace(props: Props) {
         <div className="screen-body">
           <div className="screen-main screen-main--map-with-right-rail">
             <div className="stage">
-              <CesiumViewport />
-              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
-              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              <TwinHomeMapShell>
+                <CesiumViewport />
+                {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+                {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+              </TwinHomeMapShell>
             </div>
             <OverviewRightSettingsRail overviewDrawers={<DirectorOverviewWidgets />} />
           </div>
@@ -140,9 +149,11 @@ export function MainWorkspace(props: Props) {
         <div className="screen-main">
           <LeftPanel />
           <div className="stage">
-            <CesiumViewport />
-            {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
-            {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+            <TwinHomeMapShell>
+              <CesiumViewport />
+              {yardTwinZone ? <YardDigitalTwinOverlay /> : null}
+              {yardVideoZone ? <YardLiveVideoOverlay /> : null}
+            </TwinHomeMapShell>
           </div>
           <RightPanel />
         </div>

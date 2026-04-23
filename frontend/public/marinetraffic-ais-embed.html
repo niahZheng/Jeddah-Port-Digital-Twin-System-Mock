@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MarineTraffic AIS</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0b1220;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 与 https://www.marinetraffic.com/en/p/embed-map 一致；独立页面便于 embed.js 在完整文档中执行 -->
+    <script type="text/javascript">
+      width = '100%'
+      height = '100%'
+      border = '0'
+      shownames = 'false'
+      latitude = '21.472'
+      longitude = '39.173'
+      zoom = '15'
+      maptype = '0'
+      trackvessel = '0'
+      fleet = ''
+    </script>
+    <script type="text/javascript" src="https://www.marinetraffic.com/js/embed.js"></script>
+  </body>
+</html>
